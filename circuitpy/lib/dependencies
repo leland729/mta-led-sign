@@ -1,0 +1,32 @@
+# CircuitPython Library Dependencies for MTA LED Sign
+# Copy these libraries to your CIRCUITPY/lib/ folder
+
+## Required Library Folders:
+adafruit_bitmap_font/
+adafruit_bus_device/
+adafruit_display_shapes/
+adafruit_display_text/
+adafruit_esp32spi/
+adafruit_imageload/
+adafruit_io/
+adafruit_matrixportal/
+adafruit_minimqtt/
+adafruit_portalbase/
+
+## Required .mpy Files:
+adafruit_connection_manager.mpy
+adafruit_fakerequests.mpy
+adafruit_requests.mpy
+adafruit_ticks.mpy
+neopixel.mpy
+neopixel_spi.mpy
+simpleio.mpy
+
+## Download Source:
+Get these from the CircuitPython Community Bundle:
+https://circuitpython.org/libraries
+
+## Notes:
+- tom-thumb.bdf font file goes in /fonts/ folder (not /lib/)
+- secrets.py goes in root directory (not /lib/)
+- Total size: ~2-3MB of libraries
