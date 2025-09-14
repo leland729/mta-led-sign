@@ -1,0 +1,2 @@
+[PM2] cron restart at 0 3 * * *
+[PM2][WARN] Verify "max_memory_restart" with regex failed, it should be a NUMBER - byte, "[NUMBER]G"(Gigabyte), "[NUMBER]M"(Megabyte) or "[NUMBER]K"(Kilobyte)
