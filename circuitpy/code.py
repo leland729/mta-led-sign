@@ -25,6 +25,9 @@ print("=" * 40)
 MATRIX_WIDTH = 64
 MATRIX_HEIGHT = 32
 UPDATE_INTERVAL = 30  # seconds
+WEATHER_UPDATE_INTERVAL = 600  # 10 minutes
+FORECAST_UPDATE_INTERVAL = 1800  # 30 minutes
+VIEW_CYCLE_INTERVAL = 10  # seconds to show each view before switching
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds between retries
 
@@ -40,15 +43,19 @@ MTA_BLUE = 0x39A600
 # Load configuration from secrets
 try:
     from secrets import secrets
-    SERVER_URL = secrets.get("server_url", "http://192.168.0.162:3000")
+    SERVER_URL = secrets.get("api_url", "http://192.168.0.162:3000")
     STATION_ID = secrets.get("station_id", "G26")
     BRIGHTNESS = secrets.get("brightness", 0.4)
+    WEATHER_API_KEY = secrets.get("openweather_api_key", "")
+    ZIP_CODE = secrets.get("zip_code", "11222")
 except ImportError:
     print("Warning: secrets.py not found, using defaults")
     secrets = {"ssid": "WIFI", "password": "PASS"}
     SERVER_URL = "http://192.168.0.162:3000"
     STATION_ID = "G26"
     BRIGHTNESS = 0.4
+    WEATHER_API_KEY = ""
+    ZIP_CODE = "11222"
 
 # Initialize display
 matrixportal = MatrixPortal(
@@ -68,56 +75,126 @@ except (OSError, RuntimeError):
     print("Using terminal font")
 
 class TrainDisplay:
-    """Manages the LED matrix display for train arrivals"""
-    
+    """Manages the LED matrix display for train arrivals and weather"""
+
     def __init__(self):
         self.main_group = displayio.Group()
         matrixportal.display.root_group = self.main_group
+        self.current_view = "subway"  # "subway" or "weather"
         self._setup_display()
-    
+        self._setup_splash()
+        matrixportal.display.root_group = self.splash_group  # Boot with splash
+
     def _setup_display(self):
         """Initialize display elements"""
+        # Create subway view group
+        self.subway_group = displayio.Group()
+        self.subway_group.y = 0
+
         # North train (top line)
-        self.north_group = displayio.Group()
-        
         if has_shapes:
             north_bullet = Circle(5, 9, 4, fill=GREEN)
-            self.north_group.append(north_bullet)
-        
+            self.subway_group.append(north_bullet)
+
         self.north_route = label.Label(font, text="G", color=WHITE, x=4, y=10)
         self.north_dest = label.Label(font, text="Court Sq", color=WHITE, x=12, y=10)
         self.north_time = label.Label(font, text="--", color=ORANGE, x=50, y=10)
         self.north_min = label.Label(font, text="", color=ORANGE, x=60, y=10)
-        
-        self.north_group.append(self.north_route)
-        self.north_group.append(self.north_dest)
-        self.north_group.append(self.north_time)
-        self.north_group.append(self.north_min)
-        self.main_group.append(self.north_group)
-        
+
+        self.subway_group.append(self.north_route)
+        self.subway_group.append(self.north_dest)
+        self.subway_group.append(self.north_time)
+        self.subway_group.append(self.north_min)
+
         # South train (bottom line)
-        self.south_group = displayio.Group()
-        
         if has_shapes:
             south_bullet = Circle(5, 22, 4, fill=GREEN)
-            self.south_group.append(south_bullet)
-        
+            self.subway_group.append(south_bullet)
+
         self.south_route = label.Label(font, text="G", color=WHITE, x=4, y=23)
         self.south_dest = label.Label(font, text="Church Av", color=WHITE, x=12, y=23)
         self.south_time = label.Label(font, text="--", color=ORANGE, x=50, y=23)
         self.south_min = label.Label(font, text="", color=ORANGE, x=60, y=23)
-        
-        self.south_group.append(self.south_route)
-        self.south_group.append(self.south_dest)
-        self.south_group.append(self.south_time)
-        self.south_group.append(self.south_min)
-        self.main_group.append(self.south_group)
-        
+
+        self.subway_group.append(self.south_route)
+        self.subway_group.append(self.south_dest)
+        self.subway_group.append(self.south_time)
+        self.subway_group.append(self.south_min)
+
         # Status message
         self.status = label.Label(font, text="", color=WHITE, x=15, y=16)
-        self.main_group.append(self.status)
-        
-        # Error indicator
+        self.subway_group.append(self.status)
+
+        # Add subway group to main
+        self.main_group.append(self.subway_group)
+
+        # Create weather view group (positioned off-screen below)
+        self.weather_group = displayio.Group()
+        self.weather_group.y = MATRIX_HEIGHT
+
+        # Weather elements - condition on top (moved down 2 pixels)
+        self.weather_condition = label.Label(font, text="", color=WHITE, x=8, y=10)
+        self.weather_group.append(self.weather_condition)
+
+        # Current temp (centered middle, moved down 2 pixels)
+        self.weather_temp = label.Label(font, text="--F", color=ORANGE, x=24, y=18)
+        self.weather_group.append(self.weather_temp)
+
+        # High/Low (bottom, moved down 2 pixels)
+        self.weather_high_label = label.Label(font, text="H:", color=WHITE, x=12, y=26)
+        self.weather_high = label.Label(font, text="--", color=RED, x=20, y=26)
+        self.weather_low_label = label.Label(font, text="L:", color=WHITE, x=36, y=26)
+        self.weather_low = label.Label(font, text="--", color=MTA_BLUE, x=44, y=26)
+
+        self.weather_group.append(self.weather_high_label)
+        self.weather_group.append(self.weather_high)
+        self.weather_group.append(self.weather_low_label)
+        self.weather_group.append(self.weather_low)
+
+        # Add weather group to main
+        self.main_group.append(self.weather_group)
+
+        # Create forecast view group (positioned off-screen below weather)
+        self.forecast_group = displayio.Group()
+        self.forecast_group.y = MATRIX_HEIGHT * 2
+
+        # Day 1 forecast (top line)
+        self.day1_name = label.Label(font, text="", color=WHITE, x=2, y=9)
+        self.day1_high = label.Label(font, text="", color=RED, x=20, y=9)
+        self.day1_low = label.Label(font, text="", color=MTA_BLUE, x=32, y=9)
+        self.day1_cond = label.Label(font, text="", color=WHITE, x=44, y=9)
+
+        self.forecast_group.append(self.day1_name)
+        self.forecast_group.append(self.day1_high)
+        self.forecast_group.append(self.day1_low)
+        self.forecast_group.append(self.day1_cond)
+
+        # Day 2 forecast (middle line)
+        self.day2_name = label.Label(font, text="", color=WHITE, x=2, y=18)
+        self.day2_high = label.Label(font, text="", color=RED, x=20, y=18)
+        self.day2_low = label.Label(font, text="", color=MTA_BLUE, x=32, y=18)
+        self.day2_cond = label.Label(font, text="", color=WHITE, x=44, y=18)
+
+        self.forecast_group.append(self.day2_name)
+        self.forecast_group.append(self.day2_high)
+        self.forecast_group.append(self.day2_low)
+        self.forecast_group.append(self.day2_cond)
+
+        # Day 3 forecast (bottom line)
+        self.day3_name = label.Label(font, text="", color=WHITE, x=2, y=27)
+        self.day3_high = label.Label(font, text="", color=RED, x=20, y=27)
+        self.day3_low = label.Label(font, text="", color=MTA_BLUE, x=32, y=27)
+        self.day3_cond = label.Label(font, text="", color=WHITE, x=44, y=27)
+
+        self.forecast_group.append(self.day3_name)
+        self.forecast_group.append(self.day3_high)
+        self.forecast_group.append(self.day3_low)
+        self.forecast_group.append(self.day3_cond)
+
+        # Add forecast group to main
+        self.main_group.append(self.forecast_group)
+
+        # Error indicator (always visible)
         if has_shapes:
             error_dot = Circle(61, 2, 1, fill=RED)
             self.error_group = displayio.Group()
@@ -136,7 +213,7 @@ class TrainDisplay:
             return
         
         if minutes == 0:
-            time_label.text = "Now"
+            time_label.text = "now"
             time_label.x = 50
             min_label.text = ""
             time_label.color = YELLOW
@@ -177,11 +254,114 @@ class TrainDisplay:
     def show_status(self, message):
         """Show status message"""
         self.status.text = message[:8]  # Limit for 64px width
-    
+
     def show_error(self, show=True):
         """Show/hide error indicator"""
         if self.error_group:
             self.error_group.hidden = not show
+
+    def _setup_splash(self):
+        """Initialize boot splash group — shown during WiFi connect, hidden after first data load"""
+        self.splash_group = displayio.Group()
+        if has_shapes:
+            self.splash_bullet = Circle(10, 16, 5, fill=GREEN)
+            self.splash_group.append(self.splash_bullet)
+        self.splash_letter = label.Label(font, text="G", color=WHITE, x=8, y=17)
+        self.splash_group.append(self.splash_letter)
+        self.splash_line1 = label.Label(font, text="Starting...", color=WHITE, x=20, y=12)
+        self.splash_group.append(self.splash_line1)
+        self.splash_line2 = label.Label(font, text="", color=ORANGE, x=20, y=21)
+        self.splash_group.append(self.splash_line2)
+
+    def show_splash(self, line1="", line2=""):
+        """Show boot splash with two status lines"""
+        self.splash_line1.text = line1[:10]
+        self.splash_line2.text = line2[:10]
+        matrixportal.display.root_group = self.splash_group
+
+    def hide_splash(self):
+        """Dismiss splash and reveal main display (data already populated)"""
+        matrixportal.display.root_group = self.main_group
+
+    def update_weather(self, weather_data):
+        """Update weather display"""
+        if not weather_data:
+            return
+
+        temp = weather_data.get('temp', '--')
+        condition = weather_data.get('condition', '')
+        high = weather_data.get('high', '--')
+        low = weather_data.get('low', '--')
+
+        # Update condition on top line (limit to fit 64px width)
+        self.weather_condition.text = condition[:14]  # ~14 chars fits nicely
+
+        # Update temp in middle
+        self.weather_temp.text = f"{temp}F"
+
+        # Update high/low on bottom
+        self.weather_high.text = str(high)
+        self.weather_low.text = str(low)
+
+    def update_forecast(self, forecast_data):
+        """Update 3-day forecast display"""
+        if not forecast_data or len(forecast_data) < 3:
+            return
+
+        # Day 1
+        day1 = forecast_data[0]
+        self.day1_name.text = day1.get('day', '')[:3]
+        self.day1_high.text = f"H{day1.get('high', '--')}"
+        self.day1_low.text = f"L{day1.get('low', '--')}"
+        self.day1_cond.text = day1.get('condition', '')[:8]
+
+        # Day 2
+        day2 = forecast_data[1]
+        self.day2_name.text = day2.get('day', '')[:3]
+        self.day2_high.text = f"H{day2.get('high', '--')}"
+        self.day2_low.text = f"L{day2.get('low', '--')}"
+        self.day2_cond.text = day2.get('condition', '')[:8]
+
+        # Day 3
+        day3 = forecast_data[2]
+        self.day3_name.text = day3.get('day', '')[:3]
+        self.day3_high.text = f"H{day3.get('high', '--')}"
+        self.day3_low.text = f"L{day3.get('low', '--')}"
+        self.day3_cond.text = day3.get('condition', '')[:8]
+
+    def scroll_to_view(self, view_name):
+        """Animate vertical scroll to specified view"""
+        if self.current_view == view_name:
+            return
+
+        # Determine target positions
+        if view_name == "weather":
+            subway_target = -MATRIX_HEIGHT
+            weather_target = 0
+            forecast_target = MATRIX_HEIGHT
+        elif view_name == "forecast":
+            subway_target = -MATRIX_HEIGHT * 2
+            weather_target = -MATRIX_HEIGHT
+            forecast_target = 0
+        else:  # subway
+            subway_target = 0
+            weather_target = MATRIX_HEIGHT
+            forecast_target = MATRIX_HEIGHT * 2
+
+        # Animate the scroll (8 frames)
+        frames = 8
+        for i in range(frames + 1):
+            progress = i / frames
+            self.subway_group.y = int(self.subway_group.y + (subway_target - self.subway_group.y) * progress)
+            self.weather_group.y = int(self.weather_group.y + (weather_target - self.weather_group.y) * progress)
+            self.forecast_group.y = int(self.forecast_group.y + (forecast_target - self.forecast_group.y) * progress)
+            time.sleep(0.08)  # Slower scroll animation
+
+        # Ensure final positions
+        self.subway_group.y = subway_target
+        self.weather_group.y = weather_target
+        self.forecast_group.y = forecast_target
+        self.current_view = view_name
 
 class NetworkManager:
     """Handles WiFi connection and HTTP requests"""
@@ -264,7 +444,160 @@ class NetworkManager:
             if self.error_count >= MAX_RETRIES:
                 self.connected = False
                 print("Resetting connection after multiple failures")
-        
+
+        return None
+
+    def fetch_weather(self):
+        """Fetch weather data from OpenWeatherMap API"""
+        if not WEATHER_API_KEY:
+            print("No weather API key configured")
+            return None
+
+        if not self.connected or not self.requests:
+            if not self.connect():
+                return None
+
+        try:
+            url = f"https://api.openweathermap.org/data/2.5/weather?zip={ZIP_CODE},us&appid={WEATHER_API_KEY}&units=imperial"
+            print(f"Fetching weather...")
+
+            response = self.requests.get(url, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                response.close()
+
+                # Extract weather info
+                temp = int(data['main']['temp'])
+                condition = data['weather'][0]['description'].upper()
+                high = int(data['main']['temp_max'])
+                low = int(data['main']['temp_min'])
+
+                weather_data = {
+                    'temp': temp,
+                    'condition': condition,
+                    'high': high,
+                    'low': low
+                }
+
+                print(f"Weather: {temp}F, {condition}")
+                gc.collect()
+                return weather_data
+            else:
+                print(f"Weather API error {response.status_code}")
+                response.close()
+
+        except Exception as e:
+            print(f"Weather fetch error: {e}")
+
+        return None
+
+    def fetch_forecast(self):
+        """Fetch 3-day weather forecast from OpenWeatherMap API"""
+        if not WEATHER_API_KEY:
+            print("No weather API key configured")
+            return None
+
+        if not self.connected or not self.requests:
+            if not self.connect():
+                return None
+
+        try:
+            # Use 5-day/3-hour forecast API (free tier)
+            url = f"https://api.openweathermap.org/data/2.5/forecast?zip={ZIP_CODE},us&appid={WEATHER_API_KEY}&units=imperial"
+            print(f"Fetching forecast...")
+
+            response = self.requests.get(url, timeout=15)
+
+            if response.status_code == 200:
+                data = response.json()
+                response.close()
+
+                # Parse forecast data - aggregate by day
+                forecast_list = data.get('list', [])
+                if not forecast_list:
+                    return None
+
+                # Group forecasts by day
+                days = {}
+
+                for item in forecast_list:
+                    # Get date from dt_txt field (format: "2024-11-25 12:00:00")
+                    dt_txt = item.get('dt_txt', '')
+                    if not dt_txt:
+                        continue
+
+                    # Extract date part (YYYY-MM-DD)
+                    date_str = dt_txt.split(' ')[0]  # "2024-11-25"
+
+                    if date_str not in days:
+                        days[date_str] = {
+                            'temps': [],
+                            'conditions': [],
+                            'date_str': date_str
+                        }
+
+                    # Collect temps and conditions
+                    days[date_str]['temps'].append(item['main']['temp'])
+                    days[date_str]['conditions'].append(item['weather'][0]['main'])
+
+                # Build forecast for next 3 days (skip today)
+                sorted_days = sorted(days.keys())
+                forecast_data = []
+
+                # Day name lookup
+                day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+                for date_str in sorted_days[1:4]:  # Skip today, get next 3
+                    if date_str not in days:
+                        continue
+
+                    day_data = days[date_str]
+
+                    # Calculate high/low
+                    high = int(max(day_data['temps']))
+                    low = int(min(day_data['temps']))
+
+                    # Get most common condition
+                    conditions = day_data['conditions']
+                    condition = max(set(conditions), key=conditions.count) if conditions else 'Clear'
+
+                    # Calculate day of week from date
+                    # Simple algorithm: Use Zeller's congruence (simplified)
+                    parts = date_str.split('-')
+                    year = int(parts[0])
+                    month = int(parts[1])
+                    day = int(parts[2])
+
+                    # Adjust for Jan/Feb
+                    if month < 3:
+                        month += 12
+                        year -= 1
+
+                    # Zeller's formula
+                    day_of_week = (day + ((13 * (month + 1)) // 5) + year + (year // 4) - (year // 100) + (year // 400)) % 7
+                    # Convert Zeller output (0=Sat) to our format (0=Mon)
+                    day_index = (day_of_week + 5) % 7
+                    day_name = day_names[day_index]
+
+                    forecast_data.append({
+                        'day': day_name,
+                        'high': high,
+                        'low': low,
+                        'condition': condition
+                    })
+
+                print(f"Forecast: {len(forecast_data)} days")
+                gc.collect()
+                return forecast_data if len(forecast_data) >= 3 else None
+
+            else:
+                print(f"Forecast API error {response.status_code}")
+                response.close()
+
+        except Exception as e:
+            print(f"Forecast fetch error: {e}")
+
         return None
 
 # Initialize components
@@ -276,11 +609,24 @@ print("Display initialized")
 # MAIN PROGRAM
 print("\nStarting main program...")
 
-# Initial connection and data fetch
-display.show_status("WiFi..")
-if network.connect():
+# Initial connection — retry up to 3 times (~15 seconds total)
+weather_data = None
+forecast_data = None
+connected = False
+
+for attempt in range(3):
+    display.show_splash("Connecting", "WiFi {}/3".format(attempt + 1))
+    print(f"WiFi attempt {attempt + 1}/3")
+    if network.connect():
+        connected = True
+        break
+    if attempt < 2:
+        time.sleep(RETRY_DELAY)  # wait before next attempt
+
+if connected:
+    display.show_splash("Connected!", "Loading...")
     time.sleep(2)  # Allow network to stabilize
-    
+
     print("Fetching initial data...")
     initial_data = network.fetch_trains()
     if initial_data:
@@ -288,37 +634,94 @@ if network.connect():
         display.show_error(False)
     else:
         display.show_error(True)
+
+    # Fetch initial weather
+    print("Fetching initial weather...")
+    weather_data = network.fetch_weather()
+    if weather_data:
+        display.update_weather(weather_data)
+
+    # Fetch initial forecast
+    print("Fetching initial forecast...")
+    forecast_data = network.fetch_forecast()
+    if forecast_data:
+        display.update_forecast(forecast_data)
+
+    display.hide_splash()  # Reveal main display — data already populated
 else:
-    display.show_status("No WiFi")
-    display.show_error(True)
+    # All retries failed — launch AP setup mode
+    print("WiFi failed after 3 attempts — entering AP setup mode")
+    import setup_mode
+    setup_mode.run(display)
+    # Never reaches here — setup_mode.run() calls microcontroller.reset()
 
 # Main loop
 last_update = time.monotonic()
-print(f"Starting main loop - updating every {UPDATE_INTERVAL} seconds")
+last_weather_update = time.monotonic()
+last_forecast_update = time.monotonic()
+last_view_cycle = time.monotonic()
+current_view_index = 0  # 0=subway, 1=weather, 2=forecast
+views = ["subway", "weather", "forecast"]
+print(f"Starting main loop - view cycles every {VIEW_CYCLE_INTERVAL}s")
 
 while True:
     current_time = time.monotonic()
-    
-    # Time for update?
+
+    # Time for train update?
     if current_time - last_update >= UPDATE_INTERVAL:
-        print(f"\nUpdate cycle at {current_time:.0f}s")
-        
-        # Fetch new data
+        print(f"\nTrain update cycle at {current_time:.0f}s")
+
+        # Fetch new train data
         train_data = network.fetch_trains()
-        
+
         if train_data:
             display.update(train_data)
             display.show_error(False)
-            print("Display updated successfully")
+            print("Trains updated successfully")
         else:
             display.show_error(True)
-            print("Failed to fetch data")
-        
+            print("Failed to fetch train data")
+
         last_update = current_time
-        
-        # Aggressive garbage collection after update
         gc.collect()
         print(f"Free memory: {gc.mem_free()} bytes")
-    
+
+    # Time for weather update?
+    if current_time - last_weather_update >= WEATHER_UPDATE_INTERVAL:
+        print(f"\nWeather update cycle at {current_time:.0f}s")
+
+        weather_data = network.fetch_weather()
+
+        if weather_data:
+            display.update_weather(weather_data)
+            print("Weather updated successfully")
+
+        last_weather_update = current_time
+        gc.collect()
+
+    # Time for forecast update?
+    if current_time - last_forecast_update >= FORECAST_UPDATE_INTERVAL:
+        print(f"\nForecast update cycle at {current_time:.0f}s")
+
+        forecast_data = network.fetch_forecast()
+
+        if forecast_data:
+            display.update_forecast(forecast_data)
+            print("Forecast updated successfully")
+
+        last_forecast_update = current_time
+        gc.collect()
+
+    # Time to cycle view?
+    if current_time - last_view_cycle >= VIEW_CYCLE_INTERVAL:
+        # Cycle through views: subway -> weather -> forecast -> subway
+        current_view_index = (current_view_index + 1) % len(views)
+        next_view = views[current_view_index]
+
+        print(f"Scrolling to {next_view} view")
+        display.scroll_to_view(next_view)
+
+        last_view_cycle = current_time
+
     # Small delay to prevent busy waiting
     time.sleep(0.2)
