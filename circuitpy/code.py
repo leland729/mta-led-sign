@@ -620,7 +620,7 @@ class NetworkManager:
             # Register (idempotent — safe to call on every boot)
             reg_url = f"{SERVER_URL}/api/device/{self.mac}/register"
             print(f"Registering device {self.mac}...")
-            resp = self.requests.post(reg_url, json={}, timeout=10)
+            resp = self.requests.post(reg_url, timeout=10)
             resp.close()
             gc.collect()
 
