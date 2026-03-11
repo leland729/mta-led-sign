@@ -15,6 +15,7 @@
 
 const express = require('express');
 const cors    = require('cors');
+const path    = require('path');
 const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
 const admin   = require('firebase-admin');
 require('dotenv').config();
@@ -32,6 +33,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const MTA_API_KEY = process.env.MTA_API_KEY;
@@ -287,6 +289,68 @@ app.get('/api/device/:mac/config', async (req, res) => {
   } catch (err) {
     console.error('[DEVICE] Config error:', err.message);
     res.status(500).json({ error: 'Could not fetch config' });
+  }
+});
+
+/**
+ * GET /api/devices
+ * Returns all registered devices sorted by last_seen (for the admin UI).
+ */
+app.get('/api/devices', async (req, res) => {
+  try {
+    const snapshot = await db.collection('devices').orderBy('last_seen', 'desc').get();
+    const devices  = [];
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      devices.push({
+        mac:                 doc.id,
+        display_name:        d.display_name,
+        station_id:          d.station_id,
+        brightness:          d.brightness,
+        scroll_speed:        d.scroll_speed,
+        openweather_api_key: d.openweather_api_key,
+        zip_code:            d.zip_code,
+        modules:             d.modules,
+        last_seen:     d.last_seen?.toDate?.()?.toISOString() ?? null,
+        registered_at: d.registered_at?.toDate?.()?.toISOString() ?? null,
+      });
+    });
+    res.json(devices);
+  } catch (err) {
+    console.error('[ADMIN] List devices error:', err.message);
+    res.status(500).json({ error: 'Could not list devices' });
+  }
+});
+
+/**
+ * PATCH /api/device/:mac/config
+ * Update one or more config fields for a device (admin UI save).
+ * Only whitelisted fields are accepted — internal fields cannot be touched.
+ */
+app.patch('/api/device/:mac/config', async (req, res) => {
+  const mac    = req.params.mac.toLowerCase();
+  const docRef = db.collection('devices').doc(mac);
+
+  const ALLOWED = ['display_name', 'station_id', 'brightness', 'scroll_speed', 'openweather_api_key', 'zip_code'];
+  const updates = {};
+  for (const key of ALLOWED) {
+    if (key in req.body) updates[key] = req.body[key];
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'No valid fields to update' });
+  }
+
+  try {
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Device not found' });
+
+    await docRef.update(updates);
+    console.log(`[ADMIN] Updated ${mac}: ${Object.keys(updates).join(', ')}`);
+    res.json({ ok: true, updated: Object.keys(updates) });
+  } catch (err) {
+    console.error('[ADMIN] Update error:', err.message);
+    res.status(500).json({ error: 'Update failed' });
   }
 });
 

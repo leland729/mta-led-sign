@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MTA LED Sign · Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d0d0d;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      max-width: 680px;
+      margin: 0 auto 28px;
+    }
+
+    .logo {
+      width: 42px; height: 42px;
+      background: #6cbe45;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900;
+      font-size: 20px;
+      color: #000;
+      flex-shrink: 0;
+      letter-spacing: -1px;
+    }
+
+    .header-text h1 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.2;
+    }
+
+    .header-text p {
+      font-size: 0.75rem;
+      color: #555;
+      margin-top: 2px;
+    }
+
+    .header-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .last-refresh {
+      font-size: 0.72rem;
+      color: #444;
+    }
+
+    .btn-ghost {
+      background: none;
+      border: 1px solid #2e2e2e;
+      color: #777;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-ghost:hover { border-color: #6cbe45; color: #6cbe45; }
+
+    /* ── Device grid ─────────────────────────────────── */
+    #devices {
+      max-width: 680px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* ── Device card ─────────────────────────────────── */
+    .card {
+      background: #181818;
+      border: 1px solid #242424;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 15px 18px;
+      border-bottom: 1px solid #222;
+    }
+
+    .status-dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .status-dot.online  { background: #6cbe45; box-shadow: 0 0 7px #6cbe4588; }
+    .status-dot.recent  { background: #e8a000; box-shadow: 0 0 7px #e8a00066; }
+    .status-dot.offline { background: #3a3a3a; }
+
+    .card-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-meta {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .card-mac {
+      font-size: 0.7rem;
+      color: #444;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    .card-seen {
+      font-size: 0.7rem;
+      color: #555;
+      margin-top: 2px;
+    }
+
+    /* ── Card body / form ────────────────────────────── */
+    .card-body {
+      padding: 18px 18px 4px;
+    }
+
+    .field {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 13px;
+    }
+
+    .field label {
+      font-size: 0.75rem;
+      color: #666;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .field input[type="text"],
+    .field input[type="number"],
+    .field select {
+      width: 100%;
+      background: #111;
+      border: 1px solid #2c2c2c;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 0.82rem;
+      padding: 7px 9px;
+      outline: none;
+      transition: border-color 0.15s;
+      appearance: none;
+    }
+
+    .field input:focus,
+    .field select:focus {
+      border-color: #6cbe45;
+    }
+
+    .field select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+
+    .field select option { background: #181818; }
+
+    /* Brightness slider */
+    .slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slider-wrap input[type="range"] {
+      flex: 1;
+      accent-color: #6cbe45;
+      height: 4px;
+    }
+
+    .slider-val {
+      font-size: 0.75rem;
+      color: #888;
+      width: 30px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .field-narrow input {
+      max-width: 90px;
+    }
+
+    /* ── Card footer ─────────────────────────────────── */
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 12px 18px;
+      border-top: 1px solid #1e1e1e;
+    }
+
+    .save-msg {
+      font-size: 0.75rem;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .save-msg.ok    { color: #6cbe45; opacity: 1; }
+    .save-msg.err   { color: #e05050; opacity: 1; }
+
+    .btn-save {
+      background: #6cbe45;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 20px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-save:hover   { background: #7fd456; }
+    .btn-save:active  { background: #59a836; }
+    .btn-save:disabled { background: #2e2e2e; color: #555; cursor: default; }
+
+    /* ── States ──────────────────────────────────────── */
+    .state-box {
+      text-align: center;
+      padding: 56px 20px;
+      color: #3a3a3a;
+    }
+    .state-box .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .state-box p { font-size: 0.85rem; line-height: 1.6; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">G</div>
+  <div class="header-text">
+    <h1>MTA LED Sign Admin</h1>
+    <p>Device configuration</p>
+  </div>
+  <div class="header-actions">
+    <span class="last-refresh" id="last-refresh"></span>
+    <button class="btn-ghost" onclick="loadDevices()">↻ Refresh</button>
+  </div>
+</header>
+
+<div id="devices">
+  <div class="state-box"><div class="icon">⏳</div><p>Loading devices…</p></div>
+</div>
+
+<script>
+  let stations = [];
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function relTime(iso) {
+    if (!iso) return 'Never';
+    const sec = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (sec < 5)    return 'just now';
+    if (sec < 60)   return `${sec}s ago`;
+    if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+    return `${Math.floor(sec / 86400)}d ago`;
+  }
+
+  function statusClass(iso) {
+    if (!iso) return 'offline';
+    const sec = (Date.now() - new Date(iso)) / 1000;
+    if (sec < 300)  return 'online';
+    if (sec < 1800) return 'recent';
+    return 'offline';
+  }
+
+  function deviceId(mac) {
+    return 'dev-' + mac.replace(/:/g, '');
+  }
+
+  // ── Build card HTML ────────────────────────────────────────────────────────
+
+  function buildCard(d) {
+    const id  = deviceId(d.mac);
+    const st  = statusClass(d.last_seen);
+    const bv  = (d.brightness ?? 0.4).toFixed(2);
+
+    const stationOpts = stations.map(s =>
+      `<option value="${esc(s.stop_id)}" ${s.stop_id === d.station_id ? 'selected' : ''}>${esc(s.stop_name)}</option>`
+    ).join('');
+
+    return `
+<div class="card" id="${id}" data-mac="${esc(d.mac)}">
+  <div class="card-header">
+    <div class="status-dot ${st}" title="${st}"></div>
+    <div class="card-name">${esc(d.display_name || d.mac)}</div>
+    <div class="card-meta">
+      <div class="card-mac">${esc(d.mac)}</div>
+      <div class="card-seen">${relTime(d.last_seen)}</div>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="field">
+      <label for="${id}-name">Display name</label>
+      <input type="text" id="${id}-name" value="${esc(d.display_name)}" placeholder="e.g. Kitchen Sign">
+    </div>
+
+    <div class="field">
+      <label for="${id}-station">Station</label>
+      <select id="${id}-station">${stationOpts}</select>
+    </div>
+
+    <div class="field">
+      <label for="${id}-brightness">Brightness</label>
+      <div class="slider-wrap">
+        <input type="range" id="${id}-brightness"
+          min="0.05" max="1.0" step="0.05" value="${bv}"
+          oninput="document.getElementById('${id}-bval').textContent = parseFloat(this.value).toFixed(2)">
+        <span class="slider-val" id="${id}-bval">${bv}</span>
+      </div>
+    </div>
+
+    <div class="field field-narrow">
+      <label for="${id}-speed">View cycle</label>
+      <input type="number" id="${id}-speed"
+        value="${d.scroll_speed ?? 10}" min="3" max="120" step="1"
+        title="Seconds each view (subway / weather / forecast) stays on screen">
+    </div>
+
+    <div class="field field-narrow">
+      <label for="${id}-zip">Zip code</label>
+      <input type="text" id="${id}-zip" value="${esc(d.zip_code)}" placeholder="11222" maxlength="10">
+    </div>
+
+    <div class="field">
+      <label for="${id}-key">Weather API key</label>
+      <input type="text" id="${id}-key" value="${esc(d.openweather_api_key)}"
+        placeholder="OpenWeatherMap key" autocomplete="off" spellcheck="false">
+    </div>
+  </div>
+
+  <div class="card-footer">
+    <span class="save-msg" id="${id}-msg"></span>
+    <button class="btn-save" onclick="saveDevice('${esc(d.mac)}')">Save</button>
+  </div>
+</div>`;
+  }
+
+  // ── Load devices ───────────────────────────────────────────────────────────
+
+  async function loadDevices() {
+    try {
+      const [devRes, stRes] = await Promise.all([
+        fetch('/api/devices'),
+        fetch('/api/stations'),
+      ]);
+
+      if (!devRes.ok) throw new Error(`/api/devices returned ${devRes.status}`);
+
+      stations = await stRes.json();
+      const devices = await devRes.json();
+
+      const container = document.getElementById('devices');
+
+      if (!Array.isArray(devices) || devices.length === 0) {
+        container.innerHTML = `
+          <div class="state-box">
+            <div class="icon">📡</div>
+            <p>No devices registered yet.<br>Power on a sign — it will register automatically on boot.</p>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = devices.map(buildCard).join('');
+
+      document.getElementById('last-refresh').textContent =
+        'Updated ' + new Date().toLocaleTimeString();
+
+    } catch (err) {
+      document.getElementById('devices').innerHTML = `
+        <div class="state-box">
+          <div class="icon">⚠️</div>
+          <p>Failed to load devices.<br><code>${esc(err.message)}</code></p>
+        </div>`;
+    }
+  }
+
+  // ── Save a device ──────────────────────────────────────────────────────────
+
+  async function saveDevice(mac) {
+    const id  = deviceId(mac);
+    const msg = document.getElementById(`${id}-msg`);
+    const btn = document.querySelector(`#${id} .btn-save`);
+
+    const body = {
+      display_name:        document.getElementById(`${id}-name`).value.trim(),
+      station_id:          document.getElementById(`${id}-station`).value,
+      brightness:          parseFloat(document.getElementById(`${id}-brightness`).value),
+      scroll_speed:        parseInt(document.getElementById(`${id}-speed`).value, 10),
+      zip_code:            document.getElementById(`${id}-zip`).value.trim(),
+      openweather_api_key: document.getElementById(`${id}-key`).value.trim(),
+    };
+
+    btn.disabled = true;
+    msg.className = 'save-msg';
+    msg.textContent = '';
+
+    try {
+      const res = await fetch(`/api/device/${encodeURIComponent(mac)}/config`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        // Update card header name immediately
+        const card = document.getElementById(id);
+        card.querySelector('.card-name').textContent = body.display_name || mac;
+
+        msg.className = 'save-msg ok';
+        msg.textContent = 'Saved ✓';
+        setTimeout(() => { msg.className = 'save-msg'; }, 3000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        msg.className = 'save-msg err';
+        msg.textContent = data.error || `Error ${res.status}`;
+      }
+    } catch (err) {
+      msg.className = 'save-msg err';
+      msg.textContent = 'Network error';
+    }
+
+    btn.disabled = false;
+  }
+
+  // ── Auto-refresh every 30s ─────────────────────────────────────────────────
+  setInterval(loadDevices, 30_000);
+
+  // Initial load
+  loadDevices();
+</script>
+
+</body>
+</html>
