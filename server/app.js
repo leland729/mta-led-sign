@@ -655,6 +655,7 @@ class NetworkManager:
     def __init__(self):
         self.connected   = False
         self.requests    = None
+        self.mac         = None   # set after first successful connect
         self.error_count = 0
         self.last_connect_attempt = 0
 
@@ -680,6 +681,9 @@ class NetworkManager:
             self.requests = adafruit_requests.Session(pool, ssl.create_default_context())
 
             print(f"Connected: {wifi.radio.ipv4_address}")
+            if self.mac is None:
+                self.mac = ':'.join('{:02x}'.format(b) for b in wifi.radio.mac_address)
+                print(f"MAC: {self.mac}")
             self.connected   = True
             self.error_count = 0
             return True
@@ -838,6 +842,44 @@ class NetworkManager:
 
         return None
 
+    def register_and_fetch_config(self):
+        """Register this device with the server and return its Firestore config.
+
+        Creates the Firestore document on first run; bumps last_seen on every
+        subsequent boot.  Returns a config dict or None on any failure.
+        """
+        if not self.connected or not self.requests:
+            if not self.connect():
+                return None
+        if not self.mac:
+            return None
+
+        try:
+            # Register (idempotent — safe to call on every boot)
+            reg_url = f"{SERVER_URL}/api/device/{self.mac}/register"
+            print(f"Registering device {self.mac}...")
+            resp = self.requests.post(reg_url, json={}, timeout=10)
+            resp.close()
+            gc.collect()
+
+            # Fetch config
+            cfg_url = f"{SERVER_URL}/api/device/{self.mac}/config"
+            resp = self.requests.get(cfg_url, timeout=10)
+            if resp.status_code == 200:
+                config = resp.json()
+                resp.close()
+                gc.collect()
+                print(f"Config: station={config.get('station_id')} brightness={config.get('brightness')}")
+                return config
+            else:
+                print(f"Config fetch failed: HTTP {resp.status_code}")
+                resp.close()
+
+        except Exception as e:
+            print(f"Registration error: {e}")
+
+        return None
+
 
 # ── Initialize components ──────────────────────────────────────────────────────
 display = TrainDisplay()
@@ -861,8 +903,21 @@ for attempt in range(3):
         time.sleep(RETRY_DELAY)
 
 if connected:
+    display.show_splash("Connected!", "Syncing...")
+
+    # Register with server and pull Firestore config.
+    # Returned values override the compiled-in defaults above.
+    config = network.register_and_fetch_config()
+    if config:
+        WEATHER_API_KEY     = config.get('openweather_api_key', WEATHER_API_KEY)
+        ZIP_CODE            = config.get('zip_code', ZIP_CODE)
+        VIEW_CYCLE_INTERVAL = config.get('scroll_speed', VIEW_CYCLE_INTERVAL)
+        BRIGHTNESS          = config.get('brightness', BRIGHTNESS)
+        matrixportal.display.brightness = BRIGHTNESS
+        print("Firestore config applied")
+
     display.show_splash("Connected!", "Loading...")
-    time.sleep(2)
+    time.sleep(1)
 
     initial_data = network.fetch_trains()
     if initial_data:
