@@ -78,6 +78,75 @@ Station stop IDs in `server/app.js` are being corrected against `gtfs_subway/sto
 - `LINE_456_STATIONS` — 419=Wall St (not Nevins St), Brooklyn stops wrong
 - `JZ_LINE_STATIONS` — J12–J31 all wrong names
 
+## Planned Feature: Page Carousel
+
+### Concept
+Each device has up to **5 pages** that cycle on a global timer (the existing `scroll_speed` setting). Each page is independently configured with a widget type + its settings. The Admin UI becomes a page builder.
+
+### Carousel Rules
+- Max 5 pages per device
+- Global dwell time (one `scroll_speed` for all pages)
+- Pages stored as an ordered array in Firestore under the device's document
+
+### Widget Types
+
+| Widget | Config Fields | Data Source | Status |
+|---|---|---|---|
+| NYC MTA | Line, Station | MTA GTFS-RT (existing) | ✅ Live |
+| Weather | Zip code, Mode (current / 3-day / 7-day) | OpenWeather API (existing) | ✅ Live |
+| SEPTA | Route, Stop | SEPTA API (bus to start) | 🔲 Not built |
+| Last.FM | Username, Display mode (now playing / recent) | Last.FM API | 🔲 Not built |
+| MLB | Team, Mode (schedule / live score) | TBD data source | 🔲 Framework only |
+| NFL | Team, Mode (schedule / live score) | TBD data source | 🔲 Framework only |
+
+### Notes per Widget
+- **Weather**: Each weather page has its own zip code (supports multiple locations across pages)
+- **SEPTA**: Bus routes first; Regional Rail / Subway / Trolley can be added later
+- **Last.FM**: Username-based, no OAuth needed. Spotify ruled out (OAuth complexity)
+- **MLB / NFL**: Build Admin UI framework now, wire up data feed once source is chosen
+
+### Firestore Schema (proposed)
+```json
+{
+  "display_name": "Kitchen Sign",
+  "brightness": 0.4,
+  "scroll_speed": 15,
+  "openweather_api_key": "...",
+  "lastfm_api_key": "...",
+  "pages": [
+    { "type": "mta",     "line": "G", "station_id": "G26" },
+    { "type": "weather", "zip": "10001", "mode": "3-day" },
+    { "type": "mlb",     "team": "NYM", "mode": "schedule" },
+    { "type": "lastfm",  "username": "leland", "mode": "nowplaying" },
+    { "type": "septa",   "route": "42", "stop_id": "12345" }
+  ]
+}
+```
+
+### Admin UI Layout (planned)
+```
+[ Device: Kitchen Sign ]          Brightness [---] Speed [---]
+
+  Page 1  [ MTA ▾ ]     [ G Line ▾ ]  [ Greenpoint Av ▾ ]
+  Page 2  [ Weather ▾ ]  [ 10001   ]  [ 3-day ▾ ]
+  Page 3  [ MLB ▾ ]      [ Mets ▾  ]  [ Schedule ▾ ]
+  Page 4  [ Last.FM ▾ ]  [ username]  [ Now Playing ▾ ]
+  Page 5  [ SEPTA ▾ ]    [ Route 42▾] [ Stop ▾ ]
+                                               [ + Add Page ]
+[ Save ]
+```
+
+### Implementation Order (when ready to build)
+1. Refactor Firestore schema to support `pages` array (migrate existing `station_id`/`zip_code` flat fields → page objects)
+2. Rebuild Admin UI as page builder
+3. Update server API endpoints to serve per-page data
+4. Update `code.py` to iterate pages in carousel loop
+5. Add SEPTA bus endpoint to server
+6. Add Last.FM endpoint to server
+7. Add MLB/NFL framework endpoints (stubbed)
+
+---
+
 ## Known Bugs Fixed
 - `STATION_ID` was missing from Firestore config override block in both `code.py` and the firmware template in `app.js` — device always showed Greenpoint regardless of Admin UI setting
 - `(data.get('north') or {}).get('minutes')` — null-safe fix for when GTFS returns null trains
