@@ -1,7 +1,10 @@
 """
-Improved MTA LED Sign - 64x32 Single Panel
-Server calculates minutes - device just displays them
-Updates every 30 seconds with better error handling
+MTA LED Sign - 64x32 Single Panel
+Version : 1.3.0
+Updated : 2026-03-11
+Changes : Fix null crash in display.update() — same (or {}) pattern.
+          Remove hardcoded G26/11222 defaults; all config comes from Firestore.
+          secrets.py now only needs ssid, password, and optionally api_url.
 """
 
 import time
@@ -40,22 +43,28 @@ YELLOW = 0xFF00AA
 RED = 0xEE352E
 MTA_BLUE = 0x39A600
 
-# Load configuration from secrets
+# Load WiFi credentials and server URL from secrets.py.
+# All other config (station_id, zip_code, etc.) comes from Firestore via the
+# server — nothing here should need editing when you change Admin UI settings.
 try:
     from secrets import secrets
-    SERVER_URL = secrets.get("api_url", "http://192.168.0.162:3000")
-    STATION_ID = secrets.get("station_id", "G26")
-    BRIGHTNESS = secrets.get("brightness", 0.4)
-    WEATHER_API_KEY = secrets.get("openweather_api_key", "")
-    ZIP_CODE = secrets.get("zip_code", "11222")
+    SERVER_URL = secrets.get("api_url", "https://subway-api-336mpuaosa-ue.a.run.app")
+    BRIGHTNESS = 0.4   # overridden by Firestore below
+    CFG = {
+        "station_id":      "",   # set by Firestore
+        "weather_api_key": "",   # set by Firestore
+        "zip_code":        "",   # set by Firestore
+    }
 except ImportError:
     print("Warning: secrets.py not found, using defaults")
     secrets = {"ssid": "WIFI", "password": "PASS"}
-    SERVER_URL = "http://192.168.0.162:3000"
-    STATION_ID = "G26"
+    SERVER_URL = "https://subway-api-336mpuaosa-ue.a.run.app"
     BRIGHTNESS = 0.4
-    WEATHER_API_KEY = ""
-    ZIP_CODE = "11222"
+    CFG = {
+        "station_id":      "",
+        "weather_api_key": "",
+        "zip_code":        "",
+    }
 
 # Initialize display
 matrixportal = MatrixPortal(
@@ -243,12 +252,12 @@ class TrainDisplay:
         
         self.status.text = ""
         
-        # Update north train
-        north_minutes = data.get('north', {}).get('minutes')
+        # Update north train — north/south can be None when no trains are running
+        north_minutes = (data.get('north') or {}).get('minutes')
         self.update_train_time(self.north_time, self.north_min, north_minutes)
-        
+
         # Update south train
-        south_minutes = data.get('south', {}).get('minutes')
+        south_minutes = (data.get('south') or {}).get('minutes')
         self.update_train_time(self.south_time, self.south_min, south_minutes, is_south=True)
     
     def show_status(self, message):
@@ -417,7 +426,7 @@ class NetworkManager:
                 return None
         
         try:
-            url = f"{SERVER_URL}/api/next/{STATION_ID}"
+            url = f"{SERVER_URL}/api/next/{CFG['station_id']}"
             print(f"Fetching: {url}")
             
             response = self.requests.get(url, timeout=10)
@@ -429,9 +438,11 @@ class NetworkManager:
                 # Force garbage collection after network operation
                 gc.collect()
                 
-                # Debug output
-                n_min = data.get('north', {}).get('minutes', '--')
-                s_min = data.get('south', {}).get('minutes', '--')
+                # Debug output — north/south can be null when no trains are running
+                north = data.get('north') or {}
+                south = data.get('south') or {}
+                n_min = north.get('minutes', '--')
+                s_min = south.get('minutes', '--')
                 print(f"Received: North={n_min}min, South={s_min}min")
                 
                 self.error_count = 0
@@ -453,7 +464,7 @@ class NetworkManager:
 
     def fetch_weather(self):
         """Fetch weather data from OpenWeatherMap API"""
-        if not WEATHER_API_KEY:
+        if not CFG['weather_api_key']:
             print("No weather API key configured")
             return None
 
@@ -462,7 +473,7 @@ class NetworkManager:
                 return None
 
         try:
-            url = f"https://api.openweathermap.org/data/2.5/weather?zip={ZIP_CODE},us&appid={WEATHER_API_KEY}&units=imperial"
+            url = f"https://api.openweathermap.org/data/2.5/weather?zip={CFG['zip_code']},us&appid={CFG['weather_api_key']}&units=imperial"
             print(f"Fetching weather...")
 
             response = self.requests.get(url, timeout=10)
@@ -498,7 +509,7 @@ class NetworkManager:
 
     def fetch_forecast(self):
         """Fetch 3-day weather forecast from OpenWeatherMap API"""
-        if not WEATHER_API_KEY:
+        if not CFG['weather_api_key']:
             print("No weather API key configured")
             return None
 
@@ -508,7 +519,7 @@ class NetworkManager:
 
         try:
             # Use 5-day/3-hour forecast API (free tier)
-            url = f"https://api.openweathermap.org/data/2.5/forecast?zip={ZIP_CODE},us&appid={WEATHER_API_KEY}&units=imperial"
+            url = f"https://api.openweathermap.org/data/2.5/forecast?zip={CFG['zip_code']},us&appid={CFG['weather_api_key']}&units=imperial"
             print(f"Fetching forecast...")
 
             response = self.requests.get(url, timeout=15)
@@ -672,10 +683,11 @@ if connected:
     # Returned values override the compiled-in defaults above.
     config = network.register_and_fetch_config()
     if config:
-        WEATHER_API_KEY     = config.get('openweather_api_key', WEATHER_API_KEY)
-        ZIP_CODE            = config.get('zip_code', ZIP_CODE)
-        VIEW_CYCLE_INTERVAL = config.get('scroll_speed', VIEW_CYCLE_INTERVAL)
-        BRIGHTNESS          = config.get('brightness', BRIGHTNESS)
+        CFG['station_id']     = config.get('station_id', CFG['station_id'])
+        CFG['weather_api_key'] = config.get('openweather_api_key', CFG['weather_api_key'])
+        CFG['zip_code']       = config.get('zip_code', CFG['zip_code'])
+        VIEW_CYCLE_INTERVAL   = config.get('scroll_speed', VIEW_CYCLE_INTERVAL)
+        BRIGHTNESS            = config.get('brightness', BRIGHTNESS)
         matrixportal.display.brightness = BRIGHTNESS
         print("Firestore config applied")
 

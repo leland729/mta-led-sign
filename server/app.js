@@ -2,6 +2,11 @@
 
 /**
  * NYC Subway Sign Server
+ * Version : 1.3.0
+ * Updated : 2026-03-11
+ * Changes : Fix null crash in display.update() in firmware template.
+ *           (data.get('north') or {}).get() handles null safely.
+ *           code.py no longer has hardcoded station/zip — all config from Firestore.
  *
  * Fetches MTA GTFS-Realtime data, parses protobuf, and serves a JSON API
  * for Matrix Portal S3 devices. Includes Firestore-backed device config
@@ -51,36 +56,582 @@ const GTFS_FEEDS = {
   'NQRW':    'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw',
   '123456S': 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
   '7':       'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-7',
+  'JZ':      'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz',
 };
 
 // ─── Station data ─────────────────────────────────────────────────────────────
-// G line — northbound terminus: Court Sq, southbound terminus: Church Av
+// Each array: { stop_id, stop_name, routes }
+// stop_ids match MTA GTFS static data (stops.txt); N/S suffix appended at query time.
+
+// G line — Court Sq ↔ Church Av
 const G_LINE_STATIONS = [
-  { stop_id: 'G20', stop_name: 'Court Sq',               routes: ['G']           },
-  { stop_id: 'G21', stop_name: '21 St',                  routes: ['G']           },
-  { stop_id: 'G22', stop_name: 'Nassau Av',              routes: ['G']           },
-  { stop_id: 'G24', stop_name: 'Metropolitan Av',        routes: ['G', 'L']      },
-  { stop_id: 'G26', stop_name: 'Greenpoint Av',          routes: ['G']           },
-  { stop_id: 'G28', stop_name: 'Broadway',               routes: ['G']           },
-  { stop_id: 'G29', stop_name: 'Flushing Av',            routes: ['G']           },
-  { stop_id: 'G30', stop_name: 'Myrtle-Willoughby Avs', routes: ['G']           },
-  { stop_id: 'G31', stop_name: 'Bedford-Nostrand Avs',   routes: ['G']           },
-  { stop_id: 'G32', stop_name: 'Classon Av',             routes: ['G']           },
-  { stop_id: 'G33', stop_name: 'Clinton-Washington Avs', routes: ['G']           },
-  { stop_id: 'G34', stop_name: 'Fulton St',              routes: ['G']           },
-  { stop_id: 'G35', stop_name: 'Hoyt-Schermerhorn Sts', routes: ['G', 'A', 'C'] },
-  { stop_id: 'G36', stop_name: 'Church Av',              routes: ['G']           },
+  { stop_id: 'G22', stop_name: 'Court Sq',               routes: ['G', 'E', 'M', '7']  },
+  { stop_id: 'G24', stop_name: '21 St',                  routes: ['G']                  },
+  { stop_id: 'G26', stop_name: 'Greenpoint Av',          routes: ['G']                  },
+  { stop_id: 'G28', stop_name: 'Nassau Av',              routes: ['G']                  },
+  { stop_id: 'G29', stop_name: 'Metropolitan Av',        routes: ['G', 'L']             },
+  { stop_id: 'G30', stop_name: 'Broadway',               routes: ['G']                  },
+  { stop_id: 'G31', stop_name: 'Flushing Av',            routes: ['G']                  },
+  { stop_id: 'G32', stop_name: 'Myrtle-Willoughby Avs', routes: ['G']                  },
+  { stop_id: 'G33', stop_name: 'Bedford-Nostrand Avs',   routes: ['G']                  },
+  { stop_id: 'G34', stop_name: 'Classon Av',             routes: ['G']                  },
+  { stop_id: 'G35', stop_name: 'Clinton-Washington Avs', routes: ['G']                  },
+  { stop_id: 'G36', stop_name: 'Fulton St',              routes: ['G']                  },
+  { stop_id: 'A42', stop_name: 'Hoyt-Schermerhorn Sts', routes: ['G', 'A', 'C']        },
+  { stop_id: 'F20', stop_name: 'Bergen St',              routes: ['G', 'F']             },
+  { stop_id: 'F21', stop_name: 'Carroll St',             routes: ['G', 'F']             },
+  { stop_id: 'F22', stop_name: 'Smith-9 Sts',            routes: ['G', 'F']             },
+  { stop_id: 'F23', stop_name: '4 Av-9 St',              routes: ['G', 'F', 'R']        },
+  { stop_id: 'F24', stop_name: '7 Av',                   routes: ['G', 'F']             },
+  { stop_id: 'F25', stop_name: '15 St-Prospect Park',    routes: ['G', 'F']             },
+  { stop_id: 'F26', stop_name: 'Fort Hamilton Pkwy',     routes: ['G', 'F']             },
+  { stop_id: 'F27', stop_name: 'Church Av',              routes: ['G', 'F']             },
 ];
 
-// Build STATIONS lookup keyed by stop_id
+// L line — 8 Av ↔ Canarsie-Rockaway Pkwy
+const L_LINE_STATIONS = [
+  { stop_id: 'L01', stop_name: '8 Av',                    routes: ['L']                         },
+  { stop_id: 'L02', stop_name: '6 Av',                    routes: ['L']                         },
+  { stop_id: 'L03', stop_name: 'Union Sq-14 St',          routes: ['L', '4', '5', '6', 'N', 'Q', 'R', 'W'] },
+  { stop_id: 'L05', stop_name: '3 Av',                    routes: ['L']                         },
+  { stop_id: 'L06', stop_name: '1 Av',                    routes: ['L']                         },
+  { stop_id: 'L08', stop_name: 'Bedford Av',              routes: ['L']                         },
+  { stop_id: 'L10', stop_name: 'Lorimer St',              routes: ['L']                         },
+  { stop_id: 'L11', stop_name: 'Graham Av',               routes: ['L']                         },
+  { stop_id: 'L12', stop_name: 'Grand St',                routes: ['L']                         },
+  { stop_id: 'L13', stop_name: 'Montrose Av',             routes: ['L']                         },
+  { stop_id: 'L14', stop_name: 'Morgan Av',               routes: ['L']                         },
+  { stop_id: 'L15', stop_name: 'Jefferson St',            routes: ['L']                         },
+  { stop_id: 'L16', stop_name: 'DeKalb Av',               routes: ['L']                         },
+  { stop_id: 'L17', stop_name: 'Myrtle-Wyckoff Avs',      routes: ['L', 'M']                    },
+  { stop_id: 'L19', stop_name: 'Halsey St',               routes: ['L']                         },
+  { stop_id: 'L20', stop_name: 'Wilson Av',               routes: ['L']                         },
+  { stop_id: 'L21', stop_name: 'Bushwick Av-Aberdeen St', routes: ['L']                         },
+  { stop_id: 'L22', stop_name: 'Broadway Junction',       routes: ['L', 'A', 'C', 'J', 'Z']    },
+  { stop_id: 'L24', stop_name: 'Atlantic Av',             routes: ['L']                         },
+  { stop_id: 'L25', stop_name: 'Sutter Av-Rutland Rd',    routes: ['L']                         },
+  { stop_id: 'L26', stop_name: 'Livonia Av',              routes: ['L']                         },
+  { stop_id: 'L27', stop_name: 'New Lots Av',             routes: ['L']                         },
+  { stop_id: 'L28', stop_name: 'East 105 St',             routes: ['L']                         },
+  { stop_id: 'L29', stop_name: 'Canarsie-Rockaway Pkwy',  routes: ['L']                         },
+];
+
+// 7 line — 34 St-Hudson Yards ↔ Flushing-Main St
+// N = Manhattan-bound, S = Queens-bound
+const SEVEN_LINE_STATIONS = [
+  { stop_id: '701', stop_name: 'Flushing-Main St',        routes: ['7']                                        },
+  { stop_id: '702', stop_name: 'Mets-Willets Point',      routes: ['7']                                        },
+  { stop_id: '705', stop_name: '111 St',                  routes: ['7']                                        },
+  { stop_id: '706', stop_name: '103 St-Corona Plaza',     routes: ['7']                                        },
+  { stop_id: '707', stop_name: 'Junction Blvd',           routes: ['7']                                        },
+  { stop_id: '708', stop_name: '90 St-Elmhurst Av',       routes: ['7']                                        },
+  { stop_id: '709', stop_name: '82 St-Jackson Hts',       routes: ['7']                                        },
+  { stop_id: '710', stop_name: '74 St-Broadway',          routes: ['7', 'E', 'F', 'M', 'R']                   },
+  { stop_id: '711', stop_name: '69 St',                   routes: ['7']                                        },
+  { stop_id: '712', stop_name: '61 St-Woodside',          routes: ['7']                                        },
+  { stop_id: '713', stop_name: '52 St',                   routes: ['7']                                        },
+  { stop_id: '714', stop_name: '46 St-Bliss St',          routes: ['7']                                        },
+  { stop_id: '715', stop_name: '40 St-Lowery St',         routes: ['7']                                        },
+  { stop_id: '716', stop_name: '33 St-Rawson St',         routes: ['7']                                        },
+  { stop_id: '718', stop_name: 'Queensboro Plaza',        routes: ['7', 'N', 'W']                              },
+  { stop_id: '719', stop_name: 'Court Sq',                routes: ['7', 'E', 'G', 'M']                        },
+  { stop_id: '720', stop_name: 'Hunters Point Av',        routes: ['7']                                        },
+  { stop_id: '721', stop_name: 'Vernon Blvd-Jackson Av',  routes: ['7']                                        },
+  { stop_id: '723', stop_name: 'Grand Central-42 St',     routes: ['7', '4', '5', '6', 'S']                   },
+  { stop_id: '724', stop_name: '5 Av',                    routes: ['7']                                        },
+  { stop_id: '725', stop_name: 'Times Sq-42 St',          routes: ['7', '1', '2', '3', 'N', 'Q', 'R', 'W', 'S'] },
+  { stop_id: '726', stop_name: '34 St-Hudson Yards',      routes: ['7']                                        },
+];
+
+// A/C/E lines — IND 8th Av + Queens Blvd
+// A: Inwood-207 St / Far Rockaway / Lefferts Blvd  C: 168 St ↔ Euclid Av  E: Jamaica Center ↔ WTC
+const ACE_LINE_STATIONS = [
+  { stop_id: 'A02', stop_name: 'Inwood-207 St',                     routes: ['A']                              },
+  { stop_id: 'A03', stop_name: 'Dyckman St',                        routes: ['A']                              },
+  { stop_id: 'A05', stop_name: '190 St',                            routes: ['A']                              },
+  { stop_id: 'A06', stop_name: '181 St',                            routes: ['A']                              },
+  { stop_id: 'A07', stop_name: '175 St',                            routes: ['A']                              },
+  { stop_id: 'A09', stop_name: '168 St',                            routes: ['A', 'C']                         },
+  { stop_id: 'A10', stop_name: '163 St-Amsterdam Av',               routes: ['A', 'C']                         },
+  { stop_id: 'A11', stop_name: '155 St',                            routes: ['A', 'C']                         },
+  { stop_id: 'A12', stop_name: '145 St',                            routes: ['A', 'C']                         },
+  { stop_id: 'A14', stop_name: '135 St',                            routes: ['A', 'B', 'C', 'D']               },
+  { stop_id: 'A15', stop_name: '125 St',                            routes: ['A', 'C']                         },
+  { stop_id: 'A16', stop_name: '116 St',                            routes: ['A', 'C']                         },
+  { stop_id: 'A17', stop_name: 'Cathedral Pkwy (110 St)',           routes: ['A', 'C']                         },
+  { stop_id: 'A18', stop_name: '103 St',                            routes: ['A', 'C']                         },
+  { stop_id: 'A19', stop_name: '96 St',                             routes: ['A', 'C']                         },
+  { stop_id: 'A20', stop_name: '86 St',                             routes: ['A', 'C']                         },
+  { stop_id: 'A21', stop_name: '81 St-Museum of Natural History',   routes: ['A', 'B', 'C']                    },
+  { stop_id: 'A22', stop_name: '72 St',                             routes: ['A', 'B', 'C']                    },
+  { stop_id: 'A24', stop_name: '59 St-Columbus Circle',             routes: ['A', 'B', 'C', 'D']               },
+  { stop_id: 'A25', stop_name: '50 St',                             routes: ['A', 'C', 'E']                    },
+  { stop_id: 'A27', stop_name: '42 St-Port Authority Bus Terminal', routes: ['A', 'C', 'E']                    },
+  { stop_id: 'A28', stop_name: '34 St-Penn Station',                routes: ['A', 'C', 'E']                    },
+  { stop_id: 'A30', stop_name: '23 St',                             routes: ['A', 'C', 'E']                    },
+  { stop_id: 'A31', stop_name: '14 St',                             routes: ['A', 'C', 'E']                    },
+  { stop_id: 'A32', stop_name: 'W 4 St-Wash Sq',                    routes: ['A', 'B', 'C', 'D', 'E', 'F', 'M'] },
+  { stop_id: 'A33', stop_name: 'Spring St',                         routes: ['A', 'C', 'E']                    },
+  { stop_id: 'A34', stop_name: 'Canal St',                          routes: ['A', 'C', 'E']                    },
+  { stop_id: 'A36', stop_name: 'Chambers St',                       routes: ['A', 'C', 'E']                    },
+  { stop_id: 'A38', stop_name: 'Fulton St',                         routes: ['A', 'C', 'J', 'Z', '2', '3', '4', '5'] },
+  { stop_id: 'A40', stop_name: 'High St',                           routes: ['A', 'C']                         },
+  { stop_id: 'A41', stop_name: 'Jay St-MetroTech',                  routes: ['A', 'C', 'F', 'R']               },
+  { stop_id: 'A42', stop_name: 'Hoyt-Schermerhorn Sts',             routes: ['A', 'C', 'G']                    },
+  { stop_id: 'A43', stop_name: 'Lafayette Av',                      routes: ['A', 'C']                         },
+  { stop_id: 'A44', stop_name: 'Clinton-Washington Avs',            routes: ['A', 'C']                         },
+  { stop_id: 'A45', stop_name: 'Franklin Av',                       routes: ['A', 'C']                         },
+  { stop_id: 'A46', stop_name: 'Nostrand Av',                       routes: ['A', 'C']                         },
+  { stop_id: 'A47', stop_name: 'Kingston-Throop Avs',               routes: ['A', 'C']                         },
+  { stop_id: 'A48', stop_name: 'Utica Av',                          routes: ['A', 'C']                         },
+  { stop_id: 'A49', stop_name: 'Ralph Av',                          routes: ['A']                              },
+  { stop_id: 'A50', stop_name: 'Rockaway Av',                       routes: ['A']                              },
+  { stop_id: 'A51', stop_name: 'Broadway Junction',                 routes: ['A', 'C', 'J', 'Z', 'L']         },
+  { stop_id: 'A52', stop_name: 'Liberty Av',                        routes: ['A']                              },
+  { stop_id: 'A53', stop_name: 'Van Siclen Av',                     routes: ['A']                              },
+  { stop_id: 'A54', stop_name: 'Shepherd Av',                       routes: ['A']                              },
+  { stop_id: 'A55', stop_name: 'Euclid Av',                         routes: ['A', 'C']                         },
+  { stop_id: 'A57', stop_name: 'Grant Av',                          routes: ['A']                              },
+  { stop_id: 'A59', stop_name: '80 St',                             routes: ['A']                              },
+  { stop_id: 'A60', stop_name: '88 St',                             routes: ['A']                              },
+  { stop_id: 'A61', stop_name: 'Rockaway Blvd',                     routes: ['A']                              },
+  { stop_id: 'A63', stop_name: '104 St',                            routes: ['A']                              },
+  { stop_id: 'A64', stop_name: '111 St',                            routes: ['A']                              },
+  { stop_id: 'A65', stop_name: 'Ozone Park-Lefferts Blvd',          routes: ['A']                              },
+  // Far Rockaway / Rockaway Park branch
+  { stop_id: 'H01', stop_name: 'Aqueduct Racetrack',                routes: ['A']                              },
+  { stop_id: 'H02', stop_name: 'Aqueduct-N Conduit Av',             routes: ['A']                              },
+  { stop_id: 'H03', stop_name: 'Howard Beach-JFK Airport',          routes: ['A']                              },
+  { stop_id: 'H04', stop_name: 'Broad Channel',                     routes: ['A', 'S']                         },
+  { stop_id: 'H06', stop_name: 'Beach 67 St',                       routes: ['A', 'S']                         },
+  { stop_id: 'H07', stop_name: 'Beach 60 St',                       routes: ['A']                              },
+  { stop_id: 'H08', stop_name: 'Beach 44 St',                       routes: ['A']                              },
+  { stop_id: 'H09', stop_name: 'Beach 36 St',                       routes: ['A']                              },
+  { stop_id: 'H10', stop_name: 'Beach 25 St',                       routes: ['A']                              },
+  { stop_id: 'H11', stop_name: 'Far Rockaway-Mott Av',              routes: ['A']                              },
+  { stop_id: 'H12', stop_name: 'Beach 90 St',                       routes: ['S']                              },
+  { stop_id: 'H13', stop_name: 'Beach 98 St',                       routes: ['S']                              },
+  { stop_id: 'H14', stop_name: 'Beach 105 St',                      routes: ['S']                              },
+  { stop_id: 'H15', stop_name: 'Rockaway Park-Beach 116 St',        routes: ['A', 'S']                         },
+  // E train Queens (IND Queens Blvd)
+  { stop_id: 'G05', stop_name: 'Jamaica Center-Parsons/Archer',     routes: ['E', 'J', 'Z']                    },
+  { stop_id: 'G06', stop_name: 'Sutphin Blvd-Archer Av-JFK',        routes: ['E', 'J', 'Z']                    },
+  { stop_id: 'F01', stop_name: 'Jamaica-179 St',                    routes: ['F']                              },
+  { stop_id: 'F03', stop_name: 'Parsons Blvd',                      routes: ['E', 'F']                         },
+  { stop_id: 'F05', stop_name: 'Briarwood',                         routes: ['E', 'F']                         },
+  { stop_id: 'F06', stop_name: 'Kew Gardens-Union Tpke',            routes: ['E', 'F']                         },
+  { stop_id: 'F07', stop_name: '75 Av',                             routes: ['E', 'F']                         },
+  { stop_id: 'G08', stop_name: 'Forest Hills-71 Av',                routes: ['E', 'F', 'M', 'R']               },
+  { stop_id: 'G09', stop_name: '67 Av',                             routes: ['F', 'M', 'R']                    },
+  { stop_id: 'G10', stop_name: '63 Dr-Rego Park',                   routes: ['F', 'M', 'R']                    },
+  { stop_id: 'G11', stop_name: 'Woodhaven Blvd',                    routes: ['F', 'M', 'R']                    },
+  { stop_id: 'G12', stop_name: 'Grand Av-Newtown',                  routes: ['F', 'M', 'R']                    },
+  { stop_id: 'G13', stop_name: 'Elmhurst Av',                       routes: ['M', 'R']                         },
+  { stop_id: 'G14', stop_name: 'Jackson Hts-Roosevelt Av',          routes: ['E', 'F', 'M', 'R', '7']          },
+  { stop_id: 'G15', stop_name: '65 St',                             routes: ['M', 'R']                         },
+  { stop_id: 'G16', stop_name: 'Northern Blvd',                     routes: ['M', 'R']                         },
+  { stop_id: 'G18', stop_name: '46 St',                             routes: ['M', 'R']                         },
+  { stop_id: 'G19', stop_name: 'Steinway St',                       routes: ['M', 'R']                         },
+  { stop_id: 'G20', stop_name: '36 St',                             routes: ['M', 'R']                         },
+  { stop_id: 'G21', stop_name: 'Queens Plaza',                      routes: ['E', 'M', 'R']                    },
+  { stop_id: 'F09', stop_name: 'Court Sq-23 St',                    routes: ['E', 'M']                         },
+];
+
+// B/D/F/M lines — IND 6th Av + IND Concourse (D/B Bronx)
+const BDFM_LINE_STATIONS = [
+  // D line Bronx (IND Concourse)
+  { stop_id: 'D01', stop_name: 'Norwood-205 St',                  routes: ['D']                         },
+  { stop_id: 'D03', stop_name: 'Bedford Park Blvd-Lehman College',routes: ['B', 'D']                    },
+  { stop_id: 'D04', stop_name: 'Kingsbridge Rd',                  routes: ['D']                         },
+  { stop_id: 'D05', stop_name: 'Fordham Rd',                      routes: ['D']                         },
+  { stop_id: 'D06', stop_name: 'E 182-183 Sts',                   routes: ['D']                         },
+  { stop_id: 'D07', stop_name: 'Tremont Av',                      routes: ['D']                         },
+  { stop_id: 'D08', stop_name: '174-175 Sts',                     routes: ['D']                         },
+  { stop_id: 'D09', stop_name: '170 St',                          routes: ['D']                         },
+  { stop_id: 'D10', stop_name: '167 St',                          routes: ['D']                         },
+  { stop_id: 'D11', stop_name: '161 St-Yankee Stadium',           routes: ['B', 'D', '4']               },
+  { stop_id: 'D12', stop_name: '155 St',                          routes: ['B', 'D']                    },
+  { stop_id: 'D13', stop_name: '145 St',                          routes: ['B', 'D']                    },
+  // B line Bronx (separate branch to 145 St via Bedford Park)
+  { stop_id: 'D14', stop_name: 'Concourse',                       routes: ['B', 'D']                    },
+  // Shared 8th Ave upper Manhattan (B/D join A/C track at 59 St)
+  { stop_id: 'A14', stop_name: '125 St',                          routes: ['A', 'B', 'C', 'D']          },
+  { stop_id: 'A20', stop_name: '81 St-Museum of Natural History', routes: ['A', 'B', 'C']               },
+  { stop_id: 'A21', stop_name: '72 St',                           routes: ['A', 'B', 'C']               },
+  { stop_id: 'A22', stop_name: '59 St-Columbus Circle',           routes: ['A', 'B', 'C', 'D']          },
+  // 6th Av trunk (B/D/F/M)
+  { stop_id: 'D15', stop_name: '7 Av',                            routes: ['B', 'D']                    },
+  { stop_id: 'D16', stop_name: '47-50 Sts-Rockefeller Ctr',       routes: ['B', 'D', 'F', 'M']          },
+  { stop_id: 'D17', stop_name: '42 St-Bryant Park',               routes: ['B', 'D', 'F', 'M']          },
+  { stop_id: 'D18', stop_name: '34 St-Herald Sq',                 routes: ['B', 'D', 'F', 'M', 'N', 'Q', 'R', 'W'] },
+  { stop_id: 'D19', stop_name: '23 St',                           routes: ['F', 'M']                    },
+  { stop_id: 'D20', stop_name: '14 St',                           routes: ['F', 'M']                    },
+  { stop_id: 'A30', stop_name: 'W 4 St-Wash Sq',                  routes: ['A', 'B', 'C', 'D', 'E', 'F', 'M'] },
+  { stop_id: 'D21', stop_name: 'Broadway-Lafayette St',           routes: ['B', 'D', 'F', 'M']          },
+  { stop_id: 'D22', stop_name: 'Grand St',                        routes: ['B', 'D']                    },
+  // Brighton Beach branch (B/D)
+  { stop_id: 'D24', stop_name: 'DeKalb Av',                       routes: ['B', 'D', 'N', 'Q', 'R']    },
+  { stop_id: 'D25', stop_name: 'Atlantic Av-Barclays Ctr',        routes: ['B', 'D', 'N', 'Q', 'R', '2', '3', '4', '5'] },
+  { stop_id: 'D26', stop_name: 'Seventh Av',                      routes: ['B', 'Q']                    },
+  { stop_id: 'D27', stop_name: 'Prospect Park',                   routes: ['B', 'Q']                    },
+  { stop_id: 'D28', stop_name: 'Parkside Av',                     routes: ['B', 'Q']                    },
+  { stop_id: 'D29', stop_name: 'Church Av',                       routes: ['B', 'Q']                    },
+  { stop_id: 'D30', stop_name: 'Beverly Rd',                      routes: ['B', 'Q']                    },
+  { stop_id: 'D31', stop_name: 'Cortelyou Rd',                    routes: ['B', 'Q']                    },
+  { stop_id: 'D32', stop_name: 'Newkirk Av',                      routes: ['B', 'Q']                    },
+  { stop_id: 'D33', stop_name: 'Avenue H',                        routes: ['B', 'Q']                    },
+  { stop_id: 'D34', stop_name: 'Avenue J',                        routes: ['B', 'Q']                    },
+  { stop_id: 'D35', stop_name: 'Avenue M',                        routes: ['B', 'Q']                    },
+  { stop_id: 'D37', stop_name: 'Kings Hwy',                       routes: ['B', 'Q']                    },
+  { stop_id: 'D38', stop_name: 'Avenue U',                        routes: ['B', 'Q']                    },
+  { stop_id: 'D39', stop_name: 'Neck Rd',                         routes: ['B']                         },
+  { stop_id: 'D40', stop_name: 'Sheepshead Bay',                  routes: ['B', 'Q']                    },
+  { stop_id: 'D41', stop_name: 'Brighton Beach',                  routes: ['B', 'Q']                    },
+  { stop_id: 'D42', stop_name: 'Ocean Pkwy',                      routes: ['B', 'Q']                    },
+  { stop_id: 'D43', stop_name: 'W 8 St-NY Aquarium',              routes: ['B', 'Q']                    },
+  { stop_id: 'D44', stop_name: 'Coney Island-Stillwell Av',       routes: ['D', 'F', 'N', 'Q']          },
+  // F train Queens (IND Queens Blvd)
+  { stop_id: 'G06', stop_name: 'Jamaica-179 St',                  routes: ['E', 'F']                    },
+  { stop_id: 'G05', stop_name: 'Parsons Blvd',                    routes: ['E', 'F']                    },
+  { stop_id: 'G04', stop_name: 'Briarwood',                       routes: ['E', 'F']                    },
+  { stop_id: 'G03', stop_name: 'Kew Gardens-Union Tpke',          routes: ['E', 'F']                    },
+  { stop_id: 'G02', stop_name: '75 Av',                           routes: ['E', 'F']                    },
+  { stop_id: 'F09', stop_name: 'Forest Hills-71 Av',              routes: ['E', 'F', 'M', 'R']          },
+  { stop_id: 'F10', stop_name: '67 Av',                           routes: ['F']                         },
+  { stop_id: 'F11', stop_name: '63 Dr-Rego Center',               routes: ['F', 'M', 'R']               },
+  { stop_id: 'F12', stop_name: 'Woodhaven Blvd',                  routes: ['F', 'M', 'R']               },
+  { stop_id: 'F14', stop_name: 'Jackson Heights-Roosevelt Av',    routes: ['E', 'F', 'M', 'R', '7']     },
+  { stop_id: 'F15', stop_name: '74 St-Broadway',                  routes: ['E', 'F', 'M', 'R', '7']     },
+  { stop_id: 'F16', stop_name: '65 St',                           routes: ['M', 'R']                    },
+  { stop_id: 'F18', stop_name: 'Elmhurst Av',                     routes: ['M', 'R']                    },
+  { stop_id: 'F20', stop_name: 'Grand Av-Newtown',                routes: ['M', 'R']                    },
+  { stop_id: 'F21', stop_name: 'Woodhaven Blvd',                  routes: ['M', 'R']                    },
+  { stop_id: 'F22', stop_name: 'Queens Plaza',                    routes: ['E', 'M', 'R']               },
+  { stop_id: 'F23', stop_name: 'Ely Av',                          routes: ['E', 'M']                    },
+  { stop_id: 'F24', stop_name: '23 St-Ely Av',                    routes: ['E', 'M']                    },
+  { stop_id: 'F25', stop_name: 'Court Sq-23 St',                  routes: ['E', 'M']                    },
+  // F Brooklyn
+  { stop_id: 'F26', stop_name: 'York St',                         routes: ['F']                         },
+  { stop_id: 'F27', stop_name: 'Bergen St',                       routes: ['F', 'G']                    },
+  { stop_id: 'F29', stop_name: 'Carroll St',                      routes: ['F', 'G']                    },
+  { stop_id: 'F30', stop_name: 'Smith-9 Sts',                     routes: ['F', 'G']                    },
+  { stop_id: 'F31', stop_name: '4 Av-9 St',                       routes: ['F', 'G', 'R']               },
+  { stop_id: 'F32', stop_name: '7 Av',                            routes: ['F']                         },
+  { stop_id: 'F33', stop_name: '15 St-Prospect Park',             routes: ['F', 'G']                    },
+  { stop_id: 'F34', stop_name: 'Fort Hamilton Pkwy',              routes: ['F', 'G']                    },
+  { stop_id: 'F35', stop_name: 'Church Av',                       routes: ['F']                         },
+  { stop_id: 'F36', stop_name: 'Ditmas Av',                       routes: ['F']                         },
+  { stop_id: 'F38', stop_name: '18 Av',                           routes: ['F']                         },
+  { stop_id: 'F39', stop_name: 'Avenue I',                        routes: ['F']                         },
+  { stop_id: 'F40', stop_name: 'Bay Pkwy',                        routes: ['F']                         },
+  { stop_id: 'F41', stop_name: 'Avenue N',                        routes: ['F']                         },
+  { stop_id: 'F42', stop_name: 'Avenue P',                        routes: ['F']                         },
+  { stop_id: 'F43', stop_name: 'Kings Hwy',                       routes: ['F']                         },
+  { stop_id: 'F44', stop_name: 'Avenue U',                        routes: ['F']                         },
+  { stop_id: 'F45', stop_name: 'Avenue X',                        routes: ['F']                         },
+  { stop_id: 'F46', stop_name: 'Neptune Av',                      routes: ['F']                         },
+  { stop_id: 'D44', stop_name: 'Coney Island-Stillwell Av',       routes: ['D', 'F', 'N', 'Q']          },
+  // M train (Middle Village / Bay Pkwy)
+  { stop_id: 'M01', stop_name: 'Middle Village-Metropolitan Av',  routes: ['M']                         },
+  { stop_id: 'M04', stop_name: 'Forest Av',                       routes: ['M']                         },
+  { stop_id: 'M05', stop_name: 'Fresh Pond Rd',                   routes: ['M']                         },
+  { stop_id: 'M06', stop_name: 'Middle Village-Metropolitan Av',  routes: ['M']                         },
+  { stop_id: 'M08', stop_name: 'Seneca Av',                       routes: ['M']                         },
+  { stop_id: 'M09', stop_name: 'Forest Hills-71 Av',              routes: ['E', 'F', 'M', 'R']          },
+  { stop_id: 'M10', stop_name: 'Myrtle-Wyckoff Avs',              routes: ['L', 'M']                    },
+  { stop_id: 'M11', stop_name: 'Knickerbocker Av',                routes: ['M']                         },
+  { stop_id: 'M12', stop_name: 'Central Av',                      routes: ['M']                         },
+  { stop_id: 'M13', stop_name: 'Halsey St',                       routes: ['M']                         },
+  { stop_id: 'M14', stop_name: 'Gates Av',                        routes: ['M']                         },
+  { stop_id: 'M16', stop_name: 'Flushing Av',                     routes: ['M']                         },
+  { stop_id: 'M18', stop_name: 'Lorimer St',                      routes: ['M']                         },
+  { stop_id: 'M19', stop_name: 'Hewes St',                        routes: ['J', 'M']                    },
+  { stop_id: 'M20', stop_name: 'Marcy Av',                        routes: ['J', 'M']                    },
+  { stop_id: 'M21', stop_name: 'Delancey St-Essex St',            routes: ['F', 'J', 'M', 'Z']          },
+  { stop_id: 'M22', stop_name: '2 Av',                            routes: ['F']                         },
+  { stop_id: 'M23', stop_name: 'Lexington Av-63 St',              routes: ['F']                         },
+  { stop_id: 'B08', stop_name: 'Bay Pkwy',                        routes: ['B']                         },
+];
+
+// N/Q/R/W lines — BMT Broadway
+const NQRW_LINE_STATIONS = [
+  // N/W Astoria branch (Queens)
+  { stop_id: 'R01', stop_name: 'Astoria-Ditmars Blvd',            routes: ['N', 'W']                    },
+  { stop_id: 'R03', stop_name: 'Astoria Blvd',                    routes: ['N', 'W']                    },
+  { stop_id: 'R04', stop_name: '30 Av',                           routes: ['N', 'W']                    },
+  { stop_id: 'R05', stop_name: 'Broadway',                        routes: ['N', 'W']                    },
+  { stop_id: 'R06', stop_name: '36 Av',                           routes: ['N', 'W']                    },
+  { stop_id: 'R08', stop_name: '39 Av-Dutch Kills',               routes: ['N', 'W']                    },
+  { stop_id: 'R09', stop_name: 'Queensboro Plaza',                routes: ['N', 'W', '7']               },
+  // Shared Midtown Manhattan (BMT Broadway)
+  { stop_id: 'R11', stop_name: 'Lexington Av-59 St',              routes: ['N', 'R', 'W']               },
+  { stop_id: 'R13', stop_name: '5 Av-59 St',                      routes: ['N', 'R', 'W']               },
+  { stop_id: 'R14', stop_name: '57 St-7 Av',                      routes: ['N', 'Q', 'R', 'W']          },
+  { stop_id: 'R15', stop_name: '49 St',                           routes: ['N', 'R', 'W']               },
+  { stop_id: 'R16', stop_name: 'Times Sq-42 St',                  routes: ['N', 'Q', 'R', 'W', '1', '2', '3', '7', 'S'] },
+  { stop_id: 'R17', stop_name: '34 St-Herald Sq',                 routes: ['B', 'D', 'F', 'M', 'N', 'Q', 'R', 'W'] },
+  { stop_id: 'R18', stop_name: '28 St',                           routes: ['N', 'R', 'W']               },
+  { stop_id: 'R19', stop_name: '23 St',                           routes: ['N', 'R', 'W']               },
+  { stop_id: 'R20', stop_name: '14 St-Union Sq',                  routes: ['N', 'Q', 'R', 'W', '4', '5', '6', 'L'] },
+  { stop_id: 'R21', stop_name: '8 St-NYU',                        routes: ['N', 'R', 'W']               },
+  { stop_id: 'R22', stop_name: 'Prince St',                       routes: ['N', 'R', 'W']               },
+  { stop_id: 'R23', stop_name: 'Canal St',                        routes: ['N', 'Q', 'R', 'W']          },
+  { stop_id: 'R24', stop_name: 'City Hall',                       routes: ['R', 'W']                    },
+  { stop_id: 'R25', stop_name: 'Cortlandt St',                    routes: ['R', 'W']                    },
+  { stop_id: 'R26', stop_name: 'Rector St',                       routes: ['R', 'W']                    },
+  { stop_id: 'R27', stop_name: 'Whitehall St-South Ferry',        routes: ['N', 'R', 'W']               },
+  // R/W Brooklyn (4th Av)
+  { stop_id: 'R28', stop_name: 'Court St',                        routes: ['R']                         },
+  { stop_id: 'R29', stop_name: 'Jay St-MetroTech',                routes: ['A', 'C', 'F', 'R']          },
+  { stop_id: 'R30', stop_name: 'DeKalb Av',                       routes: ['B', 'D', 'N', 'Q', 'R']    },
+  { stop_id: 'R31', stop_name: 'Atlantic Av-Barclays Ctr',        routes: ['B', 'D', 'N', 'Q', 'R', '2', '3', '4', '5'] },
+  { stop_id: 'R32', stop_name: 'Union St',                        routes: ['R']                         },
+  { stop_id: 'R33', stop_name: '4 Av-9 St',                       routes: ['F', 'G', 'R']               },
+  { stop_id: 'R34', stop_name: 'Smith-9 Sts',                     routes: ['F', 'G', 'R']               },
+  { stop_id: 'R35', stop_name: 'Prospect Av',                     routes: ['R']                         },
+  { stop_id: 'R36', stop_name: '25 St',                           routes: ['R']                         },
+  { stop_id: 'R37', stop_name: '36 St',                           routes: ['D', 'N', 'R']               },
+  { stop_id: 'R38', stop_name: '45 St',                           routes: ['R']                         },
+  { stop_id: 'R39', stop_name: '53 St',                           routes: ['R']                         },
+  { stop_id: 'R40', stop_name: '59 St',                           routes: ['N', 'R']                    },
+  { stop_id: 'R41', stop_name: 'Bay Ridge Av',                    routes: ['R']                         },
+  { stop_id: 'R43', stop_name: '77 St',                           routes: ['R']                         },
+  { stop_id: 'R44', stop_name: '86 St',                           routes: ['R']                         },
+  { stop_id: 'R45', stop_name: 'Bay Ridge-95 St',                 routes: ['R']                         },
+  // N/Q Brighton Beach / Coney Island
+  { stop_id: 'N02', stop_name: 'Queensboro Plaza',                routes: ['N', 'W', '7']               },
+  { stop_id: 'N03', stop_name: 'Ditmars Blvd',                    routes: ['N', 'W']                    },
+  { stop_id: 'N10', stop_name: '36 St',                           routes: ['D', 'N', 'R']               },
+  { stop_id: 'Q01', stop_name: '96 St',                           routes: ['Q']                         },
+  { stop_id: 'Q03', stop_name: '86 St',                           routes: ['Q']                         },
+  { stop_id: 'Q04', stop_name: '72 St',                           routes: ['Q']                         },
+  { stop_id: 'Q05', stop_name: '57 St',                           routes: ['Q']                         },
+  { stop_id: 'D44', stop_name: 'Coney Island-Stillwell Av',       routes: ['D', 'F', 'N', 'Q']          },
+];
+
+// 1/2/3 lines — IRT 7th Av
+const LINE_123_STATIONS = [
+  // 1 train (Van Cortlandt Park-242 St ↔ South Ferry)
+  { stop_id: '101', stop_name: 'Van Cortlandt Park-242 St',       routes: ['1']                         },
+  { stop_id: '103', stop_name: '238 St',                          routes: ['1']                         },
+  { stop_id: '104', stop_name: '231 St',                          routes: ['1']                         },
+  { stop_id: '106', stop_name: 'Marble Hill-225 St',              routes: ['1']                         },
+  { stop_id: '107', stop_name: '215 St',                          routes: ['1']                         },
+  { stop_id: '108', stop_name: 'Dyckman St',                      routes: ['1']                         },
+  { stop_id: '109', stop_name: '191 St',                          routes: ['1']                         },
+  { stop_id: '110', stop_name: '181 St',                          routes: ['1']                         },
+  { stop_id: '111', stop_name: '168 St-Washington Heights',       routes: ['1', 'A', 'C']               },
+  { stop_id: '112', stop_name: '157 St',                          routes: ['1']                         },
+  { stop_id: '113', stop_name: '145 St',                          routes: ['1']                         },
+  { stop_id: '114', stop_name: '137 St-City College',             routes: ['1']                         },
+  { stop_id: '115', stop_name: '125 St',                          routes: ['1']                         },
+  { stop_id: '116', stop_name: '116 St-Columbia University',      routes: ['1']                         },
+  { stop_id: '117', stop_name: 'Cathedral Pkwy (110 St)',         routes: ['1']                         },
+  { stop_id: '118', stop_name: '103 St',                          routes: ['1']                         },
+  { stop_id: '119', stop_name: '96 St',                           routes: ['1', '2', '3']               },
+  { stop_id: '120', stop_name: '86 St',                           routes: ['1']                         },
+  { stop_id: '121', stop_name: '79 St',                           routes: ['1']                         },
+  { stop_id: '122', stop_name: '72 St',                           routes: ['1', '2', '3']               },
+  { stop_id: '123', stop_name: '66 St-Lincoln Center',            routes: ['1']                         },
+  { stop_id: '124', stop_name: '59 St-Columbus Circle',           routes: ['1', 'A', 'B', 'C', 'D']    },
+  { stop_id: '125', stop_name: '50 St',                           routes: ['1']                         },
+  { stop_id: '127', stop_name: 'Times Sq-42 St',                  routes: ['1', '2', '3', 'N', 'Q', 'R', 'W', '7', 'S'] },
+  { stop_id: '128', stop_name: '34 St-Penn Station',              routes: ['1', '2', '3']               },
+  { stop_id: '129', stop_name: '28 St',                           routes: ['1']                         },
+  { stop_id: '130', stop_name: '23 St',                           routes: ['1']                         },
+  { stop_id: '131', stop_name: '18 St',                           routes: ['1']                         },
+  { stop_id: '132', stop_name: '14 St',                           routes: ['1', '2', '3']               },
+  { stop_id: '133', stop_name: 'Christopher St-Sheridan Sq',      routes: ['1']                         },
+  { stop_id: '134', stop_name: 'Houston St',                      routes: ['1']                         },
+  { stop_id: '135', stop_name: 'Canal St',                        routes: ['1']                         },
+  { stop_id: '136', stop_name: 'Franklin St',                     routes: ['1']                         },
+  { stop_id: '137', stop_name: 'Chambers St',                     routes: ['1', '2', '3']               },
+  { stop_id: '138', stop_name: 'Cortlandt St-WTC',                routes: ['1']                         },
+  { stop_id: '139', stop_name: 'Rector St',                       routes: ['1']                         },
+  { stop_id: '140', stop_name: 'South Ferry',                     routes: ['1']                         },
+  // 2 train Bronx branch
+  { stop_id: '201', stop_name: 'Wakefield-241 St',                routes: ['2']                         },
+  { stop_id: '204', stop_name: 'Nereid Av',                       routes: ['2']                         },
+  { stop_id: '205', stop_name: '233 St',                          routes: ['2']                         },
+  { stop_id: '206', stop_name: '225 St',                          routes: ['2']                         },
+  { stop_id: '207', stop_name: '219 St',                          routes: ['2']                         },
+  { stop_id: '208', stop_name: 'Gun Hill Rd',                     routes: ['2']                         },
+  { stop_id: '209', stop_name: 'Burke Av',                        routes: ['2']                         },
+  { stop_id: '210', stop_name: 'Allerton Av',                     routes: ['2']                         },
+  { stop_id: '211', stop_name: 'Pelham Pkwy',                     routes: ['2']                         },
+  { stop_id: '212', stop_name: 'Bronx Park East',                 routes: ['2']                         },
+  { stop_id: '213', stop_name: 'E 180 St',                        routes: ['2', '5']                    },
+  { stop_id: '214', stop_name: 'West Farms Sq-E Tremont Av',      routes: ['2', '5']                    },
+  { stop_id: '215', stop_name: '174 St',                          routes: ['2']                         },
+  { stop_id: '216', stop_name: 'Freeman St',                      routes: ['2']                         },
+  { stop_id: '217', stop_name: 'Simpson St',                      routes: ['2']                         },
+  { stop_id: '218', stop_name: 'Intervale Av',                    routes: ['2']                         },
+  { stop_id: '219', stop_name: 'Prospect Av',                     routes: ['2', '5']                    },
+  { stop_id: '220', stop_name: 'Jackson Av',                      routes: ['2', '5']                    },
+  { stop_id: '221', stop_name: 'Third Av-149 St',                 routes: ['2', '5']                    },
+  { stop_id: '222', stop_name: '149 St-Grand Concourse',          routes: ['2', '4', '5']               },
+  // 2/3 shared Harlem
+  { stop_id: '224', stop_name: '135 St',                          routes: ['2', '3']                    },
+  { stop_id: '225', stop_name: '125 St',                          routes: ['2', '3']                    },
+  { stop_id: '226', stop_name: '116 St',                          routes: ['2', '3']                    },
+  { stop_id: '227', stop_name: 'Central Park North-110 St',       routes: ['2', '3']                    },
+  // 3 train Brooklyn branch
+  { stop_id: '234', stop_name: 'Clark St',                        routes: ['2', '3']                    },
+  { stop_id: '235', stop_name: 'Borough Hall',                    routes: ['2', '3', '4', '5']          },
+  { stop_id: '236', stop_name: 'Hoyt St',                         routes: ['2', '3']                    },
+  { stop_id: '237', stop_name: 'Nevins St',                       routes: ['2', '3']                    },
+  { stop_id: '238', stop_name: 'Atlantic Av-Barclays Ctr',        routes: ['2', '3', '4', '5', 'B', 'D', 'N', 'Q', 'R'] },
+  { stop_id: '239', stop_name: 'Bergen St',                       routes: ['2', '3']                    },
+  { stop_id: '241', stop_name: 'Grand Army Plaza',                routes: ['2', '3']                    },
+  { stop_id: '242', stop_name: 'Eastern Pkwy-Brooklyn Museum',    routes: ['2', '3']                    },
+  { stop_id: '243', stop_name: 'Crown Heights-Utica Av',          routes: ['3', '4']                    },
+  { stop_id: '244', stop_name: 'Sutter Av-Rutland Rd',            routes: ['3']                         },
+  { stop_id: '245', stop_name: 'Saratoga Av',                     routes: ['3']                         },
+  { stop_id: '246', stop_name: 'Rockaway Av',                     routes: ['3']                         },
+  { stop_id: '247', stop_name: 'Junius St',                       routes: ['3']                         },
+  { stop_id: '248', stop_name: 'Pennsylvania Av',                 routes: ['3']                         },
+  { stop_id: '249', stop_name: 'New Lots Av',                     routes: ['3']                         },
+  // 2 train Brooklyn (Flatbush Av)
+  { stop_id: '250', stop_name: 'East New York',                   routes: ['2', '3', 'A', 'C']          },
+  { stop_id: '251', stop_name: 'Van Siclen Av',                   routes: ['2']                         },
+  { stop_id: '252', stop_name: 'Alabama Av',                      routes: ['2']                         },
+  { stop_id: '253', stop_name: 'Broadway Junction',               routes: ['2', '3', 'A', 'C', 'J', 'Z', 'L'] },
+  { stop_id: '254', stop_name: 'Atlantic Av',                     routes: ['2']                         },
+  { stop_id: '255', stop_name: 'Livonia Av',                      routes: ['2', '5']                    },
+  { stop_id: '256', stop_name: 'Junius St',                       routes: ['2', '5']                    },
+  { stop_id: '257', stop_name: 'New Lots Av',                     routes: ['2', '5']                    },
+  { stop_id: '258', stop_name: 'East 105 St',                     routes: ['2', '5']                    },
+  { stop_id: '259', stop_name: 'Flatbush Av-Brooklyn College',    routes: ['2', '5']                    },
+];
+
+// 4/5/6 lines — IRT Lexington Av
+const LINE_456_STATIONS = [
+  // 4 train Bronx (Woodlawn branch)
+  { stop_id: '401', stop_name: 'Woodlawn',                        routes: ['4']                         },
+  { stop_id: '402', stop_name: 'Mosholu Pkwy',                    routes: ['4']                         },
+  { stop_id: '405', stop_name: 'Bedford Park Blvd-Lehman College',routes: ['4']                         },
+  { stop_id: '406', stop_name: 'Kingsbridge Rd',                  routes: ['4']                         },
+  { stop_id: '407', stop_name: 'Fordham Rd',                      routes: ['4']                         },
+  { stop_id: '408', stop_name: 'E 182-183 Sts',                   routes: ['4']                         },
+  { stop_id: '409', stop_name: 'Burnside Av',                     routes: ['4']                         },
+  { stop_id: '410', stop_name: '176 St',                          routes: ['4']                         },
+  { stop_id: '411', stop_name: 'Mt Eden Av',                      routes: ['4']                         },
+  { stop_id: '412', stop_name: '170 St',                          routes: ['4']                         },
+  { stop_id: '413', stop_name: '167 St',                          routes: ['4']                         },
+  { stop_id: '414', stop_name: '161 St-Yankee Stadium',           routes: ['4', 'B', 'D']               },
+  { stop_id: '415', stop_name: '149 St-Grand Concourse',          routes: ['4', '5']                    },
+  { stop_id: '416', stop_name: '138 St-Grand Concourse',          routes: ['4', '5']                    },
+  // 5 train Bronx (Dyre Av branch)
+  { stop_id: '501', stop_name: 'Eastchester-Dyre Av',             routes: ['5']                         },
+  { stop_id: '502', stop_name: 'Baychester Av',                   routes: ['5']                         },
+  { stop_id: '503', stop_name: 'Gun Hill Rd',                     routes: ['5']                         },
+  { stop_id: '504', stop_name: 'Pelham Pkwy',                     routes: ['5']                         },
+  { stop_id: '505', stop_name: 'Morris Park',                     routes: ['5']                         },
+  // 4/5/6 shared Manhattan (IRT Lexington Av)
+  { stop_id: '621', stop_name: '125 St',                          routes: ['4', '5', '6']               },
+  { stop_id: '622', stop_name: '116 St',                          routes: ['6']                         },
+  { stop_id: '623', stop_name: '110 St',                          routes: ['6']                         },
+  { stop_id: '624', stop_name: '103 St',                          routes: ['6']                         },
+  { stop_id: '625', stop_name: '96 St',                           routes: ['6']                         },
+  { stop_id: '626', stop_name: '86 St',                           routes: ['4', '5', '6']               },
+  { stop_id: '627', stop_name: '77 St',                           routes: ['6']                         },
+  { stop_id: '628', stop_name: '68 St-Hunter College',            routes: ['6']                         },
+  { stop_id: '629', stop_name: 'Lexington Av-59 St',              routes: ['4', '5', '6']               },
+  { stop_id: '630', stop_name: '51 St',                           routes: ['6']                         },
+  { stop_id: '631', stop_name: 'Grand Central-42 St',             routes: ['4', '5', '6', '7', 'S']    },
+  { stop_id: '632', stop_name: '33 St',                           routes: ['6']                         },
+  { stop_id: '633', stop_name: '28 St',                           routes: ['6']                         },
+  { stop_id: '634', stop_name: '23 St',                           routes: ['6']                         },
+  { stop_id: '635', stop_name: '14 St-Union Sq',                  routes: ['4', '5', '6', 'N', 'Q', 'R', 'W', 'L'] },
+  { stop_id: '636', stop_name: 'Astor Pl',                        routes: ['6']                         },
+  { stop_id: '637', stop_name: 'Bleecker St',                     routes: ['6']                         },
+  { stop_id: '638', stop_name: 'Spring St',                       routes: ['6']                         },
+  { stop_id: '639', stop_name: 'Canal St',                        routes: ['4', '5', '6']               },
+  { stop_id: '640', stop_name: 'Brooklyn Bridge-City Hall',       routes: ['4', '5', '6']               },
+  // 4/5 Brooklyn (Eastern Pkwy)
+  { stop_id: '418', stop_name: 'Fulton St',                       routes: ['2', '3', '4', '5', 'A', 'C', 'J', 'Z'] },
+  { stop_id: '419', stop_name: 'Nevins St',                       routes: ['2', '3', '4', '5']          },
+  { stop_id: '420', stop_name: 'Atlantic Av-Barclays Ctr',        routes: ['2', '3', '4', '5', 'B', 'D', 'N', 'Q', 'R'] },
+  { stop_id: '423', stop_name: 'Crown Heights-Utica Av',          routes: ['3', '4']                    },
+  { stop_id: '425', stop_name: 'Sutter Av-Rutland Rd',            routes: ['4']                         },
+  { stop_id: '426', stop_name: 'Saratoga Av',                     routes: ['4']                         },
+  { stop_id: '427', stop_name: 'Junius St',                       routes: ['4']                         },
+  { stop_id: '428', stop_name: 'Pennsylvania Av',                 routes: ['4']                         },
+  { stop_id: '429', stop_name: 'Van Siclen Av',                   routes: ['4']                         },
+  { stop_id: '430', stop_name: 'New Lots Av',                     routes: ['4', '5']                    },
+  { stop_id: '431', stop_name: 'Flatbush Av-Brooklyn College',    routes: ['2', '5']                    },
+  // 6 train Bronx (Pelham Bay Park)
+  { stop_id: '601', stop_name: 'Pelham Bay Park',                 routes: ['6']                         },
+  { stop_id: '602', stop_name: 'Buhre Av',                        routes: ['6']                         },
+  { stop_id: '603', stop_name: 'Middletown Rd',                   routes: ['6']                         },
+  { stop_id: '604', stop_name: 'Westchester Sq-E Tremont Av',     routes: ['6']                         },
+  { stop_id: '606', stop_name: 'Zerega Av',                       routes: ['6']                         },
+  { stop_id: '607', stop_name: 'Castle Hill Av',                  routes: ['6']                         },
+  { stop_id: '608', stop_name: 'Parkchester',                     routes: ['6']                         },
+  { stop_id: '609', stop_name: 'St Lawrence Av',                  routes: ['6']                         },
+  { stop_id: '610', stop_name: 'Morrison Av-Sound View',          routes: ['6']                         },
+  { stop_id: '611', stop_name: 'Elder Av',                        routes: ['6']                         },
+  { stop_id: '612', stop_name: 'Whitlock Av',                     routes: ['6']                         },
+  { stop_id: '613', stop_name: 'Hunts Point Av',                  routes: ['6']                         },
+  { stop_id: '614', stop_name: 'Longwood Av',                     routes: ['6']                         },
+  { stop_id: '615', stop_name: 'E 149 St',                        routes: ['6']                         },
+  { stop_id: '616', stop_name: 'E 143 St-St Mary\'s St',          routes: ['6']                         },
+  { stop_id: '617', stop_name: 'Cypress Av',                      routes: ['6']                         },
+  { stop_id: '618', stop_name: 'E 138 St-Grand Concourse',        routes: ['4', '5', '6']               },
+  { stop_id: '619', stop_name: 'Brook Av',                        routes: ['6']                         },
+  { stop_id: '620', stop_name: '3 Av-138 St',                     routes: ['6']                         },
+];
+
+// J/Z lines — BMT Nassau St
+const JZ_LINE_STATIONS = [
+  { stop_id: 'J12', stop_name: 'Jamaica Center-Parsons/Archer',   routes: ['E', 'J', 'Z']               },
+  { stop_id: 'J13', stop_name: 'Sutphin Blvd-Archer Av-JFK',      routes: ['E', 'J', 'Z']               },
+  { stop_id: 'J14', stop_name: 'Jamaica-Van Wyck',                routes: ['J']                         },
+  { stop_id: 'J15', stop_name: '121 St',                          routes: ['J', 'Z']                    },
+  { stop_id: 'J16', stop_name: '111 St',                          routes: ['J', 'Z']                    },
+  { stop_id: 'J17', stop_name: '104 St',                          routes: ['J', 'Z']                    },
+  { stop_id: 'J19', stop_name: 'Woodhaven Blvd',                  routes: ['J', 'Z']                    },
+  { stop_id: 'J20', stop_name: '85 St-Forest Pkwy',               routes: ['J', 'Z']                    },
+  { stop_id: 'J21', stop_name: '75 St-Elderts Ln',                routes: ['J', 'Z']                    },
+  { stop_id: 'J22', stop_name: 'Broadway Junction',               routes: ['A', 'C', 'J', 'Z', 'L']    },
+  { stop_id: 'J23', stop_name: 'Chauncey St',                     routes: ['J', 'Z']                    },
+  { stop_id: 'J24', stop_name: 'Halsey St',                       routes: ['J', 'Z']                    },
+  { stop_id: 'J25', stop_name: 'Gates Av',                        routes: ['J', 'Z']                    },
+  { stop_id: 'J26', stop_name: 'Kosciuszko St',                   routes: ['J']                         },
+  { stop_id: 'J27', stop_name: 'Myrtle Av',                       routes: ['J', 'M', 'Z']               },
+  { stop_id: 'J28', stop_name: 'Flushing Av',                     routes: ['J', 'M', 'Z']               },
+  { stop_id: 'J29', stop_name: 'Lorimer St',                      routes: ['J', 'M', 'Z']               },
+  { stop_id: 'J30', stop_name: 'Hewes St',                        routes: ['J', 'M', 'Z']               },
+  { stop_id: 'J31', stop_name: 'Marcy Av',                        routes: ['J', 'M', 'Z']               },
+  { stop_id: 'M18', stop_name: 'Delancey St-Essex St',            routes: ['F', 'J', 'M', 'Z']          },
+  { stop_id: 'M19', stop_name: 'Bowery',                          routes: ['J', 'Z']                    },
+  { stop_id: 'M20', stop_name: 'Canal St',                        routes: ['J', 'N', 'Q', 'R', 'W', 'Z'] },
+  { stop_id: 'M21', stop_name: 'Chambers St',                     routes: ['J', 'Z']                    },
+  { stop_id: 'M22', stop_name: 'Fulton St',                       routes: ['A', 'C', 'J', 'Z', '2', '3', '4', '5'] },
+  { stop_id: 'M23', stop_name: 'Broad St',                        routes: ['J', 'Z']                    },
+];
+
+// ─── STATIONS lookup (keyed by stop_id) ───────────────────────────────────────
+const LINE_CONFIGS = [
+  { stations: G_LINE_STATIONS,    feed_group: 'G',       line_group: 'G',    northDest: 'Court Sq',              southDest: 'Church Av'               },
+  { stations: L_LINE_STATIONS,    feed_group: 'L',       line_group: 'L',    northDest: '8 Av',                  southDest: 'Canarsie-Rockaway Pkwy'  },
+  { stations: SEVEN_LINE_STATIONS,feed_group: '7',       line_group: '7',    northDest: 'Hudson Yards',          southDest: 'Flushing-Main St'        },
+  { stations: ACE_LINE_STATIONS,  feed_group: 'ACE',     line_group: 'ACE',  northDest: 'Uptown',                southDest: 'Brooklyn / Queens'       },
+  { stations: BDFM_LINE_STATIONS, feed_group: 'BDFM',    line_group: 'BDFM', northDest: 'Uptown & The Bronx',    southDest: 'Brooklyn'                },
+  { stations: NQRW_LINE_STATIONS, feed_group: 'NQRW',    line_group: 'NQRW', northDest: 'Queens / Uptown',       southDest: 'Brooklyn'                },
+  { stations: LINE_123_STATIONS,  feed_group: '123456S', line_group: '123',  northDest: 'Uptown & The Bronx',    southDest: 'Downtown & Brooklyn'     },
+  { stations: LINE_456_STATIONS,  feed_group: '123456S', line_group: '456',  northDest: 'Uptown & The Bronx',    southDest: 'Downtown & Brooklyn'     },
+  { stations: JZ_LINE_STATIONS,   feed_group: 'JZ',      line_group: 'JZ',   northDest: 'Jamaica Center',        southDest: 'Broad St'                },
+];
+
 const STATIONS = {};
-G_LINE_STATIONS.forEach(s => {
-  STATIONS[s.stop_id] = {
-    ...s,
-    feed_group: 'G',
-    northDest:  'Court Sq',
-    southDest:  'Church Av',
-  };
+LINE_CONFIGS.forEach(({ stations, feed_group, line_group, northDest, southDest }) => {
+  stations.forEach(s => {
+    // First writer wins — avoids duplicate stop_ids across groups clobbering each other
+    if (!STATIONS[s.stop_id]) {
+      STATIONS[s.stop_id] = { ...s, feed_group, line_group, northDest, southDest };
+    }
+  });
 });
 
 // ─── In-memory fallback cache ─────────────────────────────────────────────────
@@ -200,9 +751,13 @@ app.get('/api/next/:stationId', async (req, res) => {
  * Returns the full list of known stations.
  */
 app.get('/api/stations', (req, res) => {
-  res.json(
-    Object.values(STATIONS).map(({ stop_id, stop_name, routes }) => ({ stop_id, stop_name, routes }))
-  );
+  // Return every station in its canonical line group (LINE_CONFIGS order),
+  // so the UI dropdown can filter by line without losing shared stations.
+  const all = [];
+  LINE_CONFIGS.forEach(({ stations, line_group }) => {
+    stations.forEach(s => all.push({ stop_id: s.stop_id, stop_name: s.stop_name, routes: s.routes, line_group }));
+  });
+  res.json(all);
 });
 
 /**
@@ -388,8 +943,8 @@ app.get('/firmware/:mac', async (req, res) => {
 /**
  * Assemble a complete code.py from device config.
  *
- * All device-specific constants (SERVER_URL, STATION_ID, BRIGHTNESS,
- * WEATHER_API_KEY, ZIP_CODE, VIEW_CYCLE_INTERVAL) are injected at the top.
+ * All device-specific constants (SERVER_URL, BRIGHTNESS, VIEW_CYCLE_INTERVAL,
+ * and the CFG dict containing station_id, weather_api_key, zip_code) are injected at the top.
  * The device's secrets.py only needs to contain ssid + password.
  */
 function generateFirmware(config, mac) {
@@ -419,12 +974,14 @@ except ImportError:
 from secrets import secrets  # needs: ssid, password only
 
 # ── Device config (injected by server at firmware generation time) ─────────────
-SERVER_URL           = "${SERVICE_URL}"
-STATION_ID           = "${config.station_id}"
-BRIGHTNESS           = ${config.brightness}
-WEATHER_API_KEY      = "${config.openweather_api_key}"
-ZIP_CODE             = "${config.zip_code}"
-VIEW_CYCLE_INTERVAL  = ${config.scroll_speed}   # seconds per view panel
+SERVER_URL          = "${SERVICE_URL}"
+BRIGHTNESS          = ${config.brightness}
+VIEW_CYCLE_INTERVAL = ${config.scroll_speed}   # seconds per view panel
+CFG = {
+    "station_id":      "${config.station_id}",
+    "weather_api_key": "${config.openweather_api_key}",
+    "zip_code":        "${config.zip_code}",
+}
 
 print("MTA Sign - 64x32")
 print("=" * 40)
@@ -607,9 +1164,10 @@ class TrainDisplay:
         if not data:
             return
         self.status.text = ""
-        north_minutes = data.get('north', {}).get('minutes')
+        # north/south can be None when no trains are running
+        north_minutes = (data.get('north') or {}).get('minutes')
         self.update_train_time(self.north_time, self.north_min, north_minutes)
-        south_minutes = data.get('south', {}).get('minutes')
+        south_minutes = (data.get('south') or {}).get('minutes')
         self.update_train_time(self.south_time, self.south_min, south_minutes, is_south=True)
 
     def show_status(self, message):
@@ -764,7 +1322,7 @@ class NetworkManager:
                 return None
 
         try:
-            url = f"{SERVER_URL}/api/next/{STATION_ID}"
+            url = f"{SERVER_URL}/api/next/{CFG['station_id']}"
             print(f"Fetching: {url}")
 
             response = self.requests.get(url, timeout=10)
@@ -774,8 +1332,11 @@ class NetworkManager:
                 response.close()
                 gc.collect()
 
-                n_min = data.get('north', {}).get('minutes', '--')
-                s_min = data.get('south', {}).get('minutes', '--')
+                # north/south can be null when no trains are running
+                north = data.get('north') or {}
+                south = data.get('south') or {}
+                n_min = north.get('minutes', '--')
+                s_min = south.get('minutes', '--')
                 print(f"Received: North={n_min}min, South={s_min}min")
 
                 self.error_count = 0
@@ -795,7 +1356,7 @@ class NetworkManager:
 
     def fetch_weather(self):
         """Fetch current weather from OpenWeatherMap"""
-        if not WEATHER_API_KEY:
+        if not CFG['weather_api_key']:
             print("No weather API key configured")
             return None
 
@@ -804,7 +1365,7 @@ class NetworkManager:
                 return None
 
         try:
-            url = f"https://api.openweathermap.org/data/2.5/weather?zip={ZIP_CODE},us&appid={WEATHER_API_KEY}&units=imperial"
+            url = f"https://api.openweathermap.org/data/2.5/weather?zip={CFG['zip_code']},us&appid={CFG['weather_api_key']}&units=imperial"
             print("Fetching weather...")
 
             response = self.requests.get(url, timeout=10)
@@ -833,7 +1394,7 @@ class NetworkManager:
 
     def fetch_forecast(self):
         """Fetch 3-day forecast from OpenWeatherMap"""
-        if not WEATHER_API_KEY:
+        if not CFG['weather_api_key']:
             print("No weather API key configured")
             return None
 
@@ -842,7 +1403,7 @@ class NetworkManager:
                 return None
 
         try:
-            url = f"https://api.openweathermap.org/data/2.5/forecast?zip={ZIP_CODE},us&appid={WEATHER_API_KEY}&units=imperial"
+            url = f"https://api.openweathermap.org/data/2.5/forecast?zip={CFG['zip_code']},us&appid={CFG['weather_api_key']}&units=imperial"
             print("Fetching forecast...")
 
             response = self.requests.get(url, timeout=15)
@@ -973,10 +1534,11 @@ if connected:
     # Returned values override the compiled-in defaults above.
     config = network.register_and_fetch_config()
     if config:
-        WEATHER_API_KEY     = config.get('openweather_api_key', WEATHER_API_KEY)
-        ZIP_CODE            = config.get('zip_code', ZIP_CODE)
-        VIEW_CYCLE_INTERVAL = config.get('scroll_speed', VIEW_CYCLE_INTERVAL)
-        BRIGHTNESS          = config.get('brightness', BRIGHTNESS)
+        CFG['station_id']      = config.get('station_id', CFG['station_id'])
+        CFG['weather_api_key'] = config.get('openweather_api_key', CFG['weather_api_key'])
+        CFG['zip_code']        = config.get('zip_code', CFG['zip_code'])
+        VIEW_CYCLE_INTERVAL    = config.get('scroll_speed', VIEW_CYCLE_INTERVAL)
+        BRIGHTNESS             = config.get('brightness', BRIGHTNESS)
         matrixportal.display.brightness = BRIGHTNESS
         print("Firestore config applied")
 

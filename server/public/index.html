@@ -243,6 +243,33 @@
     .btn-save:active  { background: #59a836; }
     .btn-save:disabled { background: #2e2e2e; color: #555; cursor: default; }
 
+    /* ── Line selector ───────────────────────────────── */
+    .line-select-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .line-bullet {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      font-weight: 900;
+      color: #000;
+      transition: background 0.15s;
+    }
+
+    .line-bullet.light-text { color: #fff; }
+
+    .line-select-wrap select {
+      flex: 1;
+    }
+
     /* ── States ──────────────────────────────────────── */
     .state-box {
       text-align: center;
@@ -273,6 +300,19 @@
 
 <script>
   let stations = [];
+
+  // MTA line group display config — label + official bullet color
+  const LINE_GROUPS = {
+    'ACE':  { label: 'A / C / E',   color: '#2850AD' },
+    'BDFM': { label: 'B / D / F / M', color: '#FF6319' },
+    'G':    { label: 'G',           color: '#6CBE45' },
+    'JZ':   { label: 'J / Z',       color: '#996633' },
+    'L':    { label: 'L',           color: '#A7A9AC' },
+    'NQRW': { label: 'N / Q / R / W', color: '#FCCC0A' },
+    '123':  { label: '1 / 2 / 3',   color: '#EE352E' },
+    '456':  { label: '4 / 5 / 6',   color: '#00933C' },
+    '7':    { label: '7',           color: '#B933AD' },
+  };
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -306,6 +346,27 @@
     return 'dev-' + mac.replace(/:/g, '');
   }
 
+  // ── Line change: update bullet color + repopulate station dropdown ───────────
+
+  function onLineChange(id, lineGroup) {
+    // Update bullet
+    const bullet = document.getElementById(`${id}-bullet`);
+    if (bullet) {
+      const cfg = LINE_GROUPS[lineGroup];
+      bullet.style.background = cfg?.color ?? '#444';
+      // Light text for dark backgrounds; dark text for yellow/green/grey lines
+      const lightText = !['NQRW', '123', 'L'].includes(lineGroup);
+      bullet.classList.toggle('light-text', lightText);
+    }
+    // Repopulate station dropdown (no pre-selected stop)
+    const sel = document.getElementById(`${id}-station`);
+    if (!sel) return;
+    const filtered = stations.filter(s => s.line_group === lineGroup);
+    sel.innerHTML = filtered.map(s =>
+      `<option value="${esc(s.stop_id)}">${esc(s.stop_name)}</option>`
+    ).join('');
+  }
+
   // ── Build card HTML ────────────────────────────────────────────────────────
 
   function buildCard(d) {
@@ -313,9 +374,20 @@
     const st  = statusClass(d.last_seen);
     const bv  = (d.brightness ?? 0.4).toFixed(2);
 
-    const stationOpts = stations.map(s =>
-      `<option value="${esc(s.stop_id)}" ${s.stop_id === d.station_id ? 'selected' : ''}>${esc(s.stop_name)}</option>`
+    // Determine which line group the device's current station belongs to
+    const currentStation = stations.find(s => s.stop_id === d.station_id);
+    const currentLine    = currentStation?.line_group ?? Object.keys(LINE_GROUPS)[0];
+
+    // Line selector options
+    const lineOpts = Object.entries(LINE_GROUPS).map(([key, cfg]) =>
+      `<option value="${esc(key)}" ${key === currentLine ? 'selected' : ''}>${esc(cfg.label)}</option>`
     ).join('');
+
+    // Station options for the currently selected line
+    const stationOpts = stations
+      .filter(s => s.line_group === currentLine)
+      .map(s => `<option value="${esc(s.stop_id)}" ${s.stop_id === d.station_id ? 'selected' : ''}>${esc(s.stop_name)}</option>`)
+      .join('');
 
     return `
 <div class="card" id="${id}" data-mac="${esc(d.mac)}">
@@ -332,6 +404,16 @@
     <div class="field">
       <label for="${id}-name">Display name</label>
       <input type="text" id="${id}-name" value="${esc(d.display_name)}" placeholder="e.g. Kitchen Sign">
+    </div>
+
+    <div class="field">
+      <label for="${id}-line">Line</label>
+      <div class="line-select-wrap">
+        <div class="line-bullet ${['NQRW','123'].includes(currentLine) ? '' : 'light-text'}"
+             id="${id}-bullet"
+             style="background:${esc(LINE_GROUPS[currentLine]?.color ?? '#444')}"></div>
+        <select id="${id}-line" onchange="onLineChange('${esc(id)}', this.value)">${lineOpts}</select>
+      </div>
     </div>
 
     <div class="field">
