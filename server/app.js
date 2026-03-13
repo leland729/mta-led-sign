@@ -452,6 +452,7 @@ app.get('/api/lastfm', async (req, res) => {
       .map(t => ({
         artist:    t.artist?.['#text'] || '',
         track:     t.name || '',
+        album:     t.album?.['#text'] || '',
         played_at: t.date?.['#text'] || '',
       }));
 

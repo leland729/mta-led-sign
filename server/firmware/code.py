@@ -37,6 +37,7 @@ VIEW_INDEX = {'subway': 0, 'weather': 1, 'forecast': 2, 'lastfm': 3}
 # ── Colors ────────────────────────────────────────────────────────────────────
 BLACK    = 0x000000
 WHITE    = 0xFFFFFF
+GRAY     = 0x444444
 GREEN    = 0x0000FF
 ORANGE   = 0xFF00AA
 YELLOW   = 0xFF00AA
@@ -159,15 +160,20 @@ class TrainDisplay:
             self._forecast_rows.append((name, high, low, cond))
         self.main_group.append(self.forecast_group)
 
-        # Panel 3: Last.FM (y=MATRIX_HEIGHT*3 initially)
+        # Panel 3: Last.FM — left 32px: artist/album/track; right 32px: reserved for album art
         self.lastfm_group = displayio.Group()
         self.lastfm_group.y = MATRIX_HEIGHT * 3
 
-        self.lastfm_line1 = label.Label(font, text="", color=ORANGE, x=2, y=10)
-        self.lastfm_line2 = label.Label(font, text="", color=WHITE,  x=2, y=22)
-        self.lastfm_group.append(self.lastfm_line1)
-        self.lastfm_group.append(self.lastfm_line2)
+        self.lastfm_artist = label.Label(font, text="", color=ORANGE, x=2, y=7)
+        self.lastfm_album  = label.Label(font, text="", color=GRAY,   x=2, y=16)
+        self.lastfm_track  = label.Label(font, text="", color=WHITE,  x=2, y=25)
+        self.lastfm_group.append(self.lastfm_artist)
+        self.lastfm_group.append(self.lastfm_album)
+        self.lastfm_group.append(self.lastfm_track)
         self.main_group.append(self.lastfm_group)
+
+        # Scroll state: full text strings used to compute pixel widths
+        self._lfm_texts = ['', '', '']
 
         # Error dot (always visible, hidden by default)
         if has_shapes:
@@ -260,18 +266,27 @@ class TrainDisplay:
             cond_lbl.text = entry.get('description', '')[:8]
 
     def update_lastfm(self, data):
-        """Update Last.FM panel from /api/lastfm response."""
+        """Update Last.FM panel (artist / album / track) and reset marquee scroll."""
         if not data:
             return
         if data.get('mode') == 'nowplaying':
-            prefix = "> " if data.get('nowplaying') else "  "
-            self.lastfm_line1.text = (prefix + data.get('artist', ''))[:14]
-            self.lastfm_line2.text = data.get('track', '')[:14]
+            artist = data.get('artist', '')
+            album  = data.get('album',  '')
+            track  = data.get('track',  '')
         else:  # recent
             tracks = data.get('tracks', [])
-            if tracks:
-                self.lastfm_line1.text = tracks[0].get('artist', '')[:14]
-                self.lastfm_line2.text = tracks[0].get('track', '')[:14]
+            artist = tracks[0].get('artist', '') if tracks else ''
+            album  = tracks[0].get('album',  '') if tracks else ''
+            track  = tracks[0].get('track',  '') if tracks else ''
+
+        self._lfm_texts        = [artist, album, track]
+        self.lastfm_artist.text = artist
+        self.lastfm_album.text  = album
+        self.lastfm_track.text  = track
+        # Reset scroll to start position on every data refresh
+        self.lastfm_artist.x = 2
+        self.lastfm_album.x  = 2
+        self.lastfm_track.x  = 2
 
     def update_page(self, page, data):
         """Dispatch to the right update method and scroll to the right panel."""
@@ -318,6 +333,25 @@ class TrainDisplay:
         for j in range(4):
             groups[j].y = final[j]
         self.current_view = view_name
+
+    def tick_lastfm_scroll(self):
+        """Advance marquee scroll for Last.FM text labels (left 32px zone).
+
+        tom-thumb is 4px/char. Text wider than 30px scrolls left one pixel
+        per call; when fully off-screen it wraps back in from the right edge.
+        """
+        CHAR_W = 4  # tom-thumb: 4 pixels per character
+        labels = [self.lastfm_artist, self.lastfm_album, self.lastfm_track]
+        for lbl, text in zip(labels, self._lfm_texts):
+            if not text:
+                continue
+            text_w = len(text) * CHAR_W
+            if text_w <= 30:
+                lbl.x = 2       # fits — keep static
+                continue
+            lbl.x -= 1
+            if lbl.x < -text_w:
+                lbl.x = 32      # fully off left; re-enter from right edge
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -517,6 +551,7 @@ else:
 # ── Main loop ─────────────────────────────────────────────────────────────────
 last_update     = time.monotonic()
 last_view_cycle = time.monotonic()
+last_scroll     = time.monotonic()
 carousel_index  = 0
 print(f"Main loop — {len(CAROUSEL)} page(s), cycle every {VIEW_CYCLE_INTERVAL}s")
 
@@ -548,4 +583,9 @@ while True:
         last_view_cycle = current_time
         gc.collect()
 
-    time.sleep(0.2)
+    # Marquee scroll for Last.FM text — 1px every 0.1s ≈ 10px/sec
+    if display.current_view == 'lastfm' and current_time - last_scroll >= 0.1:
+        display.tick_lastfm_scroll()
+        last_scroll = current_time
+
+    time.sleep(0.05)
