@@ -194,6 +194,13 @@ Max 8 chars. All lines:
 - **SEPTA**: Wire up real SEPTA bus API endpoint
 - **MLB / NFL**: Choose data source, wire up endpoints
 
+### Known Issues / Backlog
+- **Weather panel — icon**: Current weather should show a weather icon alongside temp/condition
+- **Weather panel — location**: Show city/state/zip on the current weather screen
+- **7-day forecast**: Only 3 days display; not enough real estate for 7 days — needs either a condensed layout (heavily abbreviated) or a design decision to cap at 3-day
+- **G train dest label**: `'Ct Sq'` should be `'Court Sq'` — dest field can hold ~10 chars, no need to abbreviate
+- **Express train route letters**: `7X`, `6X`, etc. display as two characters in the circle — strip the `X` suffix so only the number shows (express vs local isn't meaningful on the sign)
+
 ---
 
 ## Known Bugs Fixed
