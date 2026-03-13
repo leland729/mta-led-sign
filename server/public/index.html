@@ -176,6 +176,30 @@
     }
     .btn-remove-page:hover { color: #e05050; background: #2a1515; }
 
+    /* ── Advanced section ────────────────────────────────────── */
+    .advanced-wrap { margin-top: 10px; padding-top: 10px; border-top: 1px solid #1e1e1e; }
+
+    .btn-advanced {
+      background: none; border: none; color: #444; cursor: pointer;
+      font-size: 0.72rem; padding: 0; display: flex; align-items: center; gap: 4px;
+      transition: color 0.15s;
+    }
+    .btn-advanced:hover { color: #888; }
+    .btn-advanced .chevron { display: inline-block; transition: transform 0.2s; }
+    .btn-advanced.open .chevron { transform: rotate(180deg); }
+
+    .advanced-section { margin-top: 10px; display: none; }
+    .advanced-section.open { display: block; }
+
+    .btn-dl-firmware {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: none; border: 1px solid #2e2e2e; color: #666;
+      padding: 6px 14px; border-radius: 6px; cursor: pointer;
+      font-size: 0.78rem; text-decoration: none;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-dl-firmware:hover { border-color: #6cbe45; color: #6cbe45; }
+
     /* ── Card footer ─────────────────────────────────────────── */
     .card-footer {
       display: flex; align-items: center; justify-content: flex-end; gap: 10px;
@@ -565,6 +589,17 @@
       </div>
       <div class="pages-list">${pagesHTML}</div>
     </div>
+
+    <div class="advanced-wrap">
+      <button class="btn-advanced" onclick="toggleAdvanced(this)">
+        <span class="chevron">▾</span> Advanced
+      </button>
+      <div class="advanced-section">
+        <a class="btn-dl-firmware" href="/firmware/${esc(d.mac)}" download="code.py">
+          ↓ Download Firmware
+        </a>
+      </div>
+    </div>
   </div>
 
   <div class="card-footer">
@@ -663,6 +698,11 @@
     }
 
     btn.disabled = false;
+  }
+
+  function toggleAdvanced(btn) {
+    btn.classList.toggle('open');
+    btn.nextElementSibling.classList.toggle('open');
   }
 
   // ── Auto-refresh every 30s ───────────────────────────────────────────────────
