@@ -189,6 +189,7 @@ class TrainDisplay:
         self._lfm_hold    = 0   # ticks remaining before scroll starts
         self._lfm_offsets = [0, 0, 0]  # char-window offset per label
         self._lfm_tick    = 0          # sub-tick counter for advance rate
+        self._lfm_window  = 7          # visible chars: 7 (art on) or 14 (art off)
 
         # Error dot (always visible, hidden by default)
         if has_shapes:
@@ -280,11 +281,14 @@ class TrainDisplay:
             low_lbl.text  = f"L{entry.get('low', '--')}"
             cond_lbl.text = entry.get('description', '')[:8]
 
-    def update_lastfm(self, data):
+    def update_lastfm(self, data, show_art=True):
         """Update Last.FM panel (artist / album / track) and reset marquee scroll.
 
-        Returns the art_url for the current track so the caller can fetch and
-        display album art separately (network fetch happens outside this method).
+        show_art controls whether the right 32px art zone is active:
+          True  → 7-char window (28px), leaves room for art at x=32
+          False → 14-char window (56px), text spans full display width
+
+        Returns the art_url for the current track (empty string if show_art=False).
         """
         if not data:
             return ''
@@ -301,17 +305,18 @@ class TrainDisplay:
             track   = t0.get('track',   '')
             art_url = t0.get('art_url', '')
 
+        self._lfm_window        = 7 if show_art else 14
         self._lfm_texts         = [artist, album, track]
         self._lfm_offsets       = [0, 0, 0]
         self._lfm_tick          = 0
-        self.lastfm_artist.text = artist[:7]
-        self.lastfm_album.text  = album[:7]
-        self.lastfm_track.text  = track[:7]
+        self.lastfm_artist.text = artist[:self._lfm_window]
+        self.lastfm_album.text  = album[:self._lfm_window]
+        self.lastfm_track.text  = track[:self._lfm_window]
         self.lastfm_artist.x    = 2
         self.lastfm_album.x     = 2
         self.lastfm_track.x     = 2
         self._lfm_hold          = 10   # 10 ticks × 0.1s = 1 second pause
-        return art_url
+        return art_url if show_art else ''
 
     def load_art(self, art_url, raw_bytes):
         """Build a 32×32 TileGrid in memory from raw RGB565 bytes and show at x=32.
@@ -376,7 +381,10 @@ class TrainDisplay:
                 self.update_forecast(data)
                 self.scroll_to_view('forecast')
         elif ptype == 'lastfm':
-            art_url = self.update_lastfm(data)
+            show_art = page.get('show_art', True)
+            art_url  = self.update_lastfm(data, show_art)
+            if not show_art:
+                self.load_art('', None)   # clear any previously displayed art
             self.scroll_to_view('lastfm')
             return art_url
         return ''
@@ -422,13 +430,13 @@ class TrainDisplay:
         wraps  = 0
         for i, (lbl, text) in enumerate(zip(labels, self._lfm_texts)):
             lbl.x = 2
-            if not text or len(text) <= 7:
+            if not text or len(text) <= self._lfm_window:
                 lbl.text = text
                 continue
-            lbl.text = text[self._lfm_offsets[i]:self._lfm_offsets[i] + 7]
+            lbl.text = text[self._lfm_offsets[i]:self._lfm_offsets[i] + self._lfm_window]
             if advance:
                 self._lfm_offsets[i] += 1
-                if self._lfm_offsets[i] > len(text) - 7:
+                if self._lfm_offsets[i] > len(text) - self._lfm_window:
                     self._lfm_offsets[i] = 0
                     wraps += 1
         if wraps:

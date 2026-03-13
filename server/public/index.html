@@ -146,14 +146,15 @@
     .line-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
     /* Per-field width hints */
-    .f-line    { width: 72px !important; flex-shrink: 0; }
-    .f-station { flex: 1; }
-    .f-zip     { width: 68px !important; flex-shrink: 0; }
-    .f-mode    { flex: 1; }
-    .f-user    { flex: 1; }
-    .f-team    { flex: 1; }
-    .f-route   { width: 68px !important; flex-shrink: 0; }
-    .f-stop    { flex: 1; }
+    .f-line     { width: 72px !important; flex-shrink: 0; }
+    .f-station  { flex: 1; }
+    .f-zip      { width: 68px !important; flex-shrink: 0; }
+    .f-mode     { flex: 1; }
+    .f-user     { flex: 1; }
+    .f-team     { flex: 1; }
+    .f-route    { width: 68px !important; flex-shrink: 0; }
+    .f-stop     { flex: 1; }
+    .f-art-label { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: #aaa; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 
     .stub-tag {
       font-size: 0.6rem; color: #444; border: 1px solid #262626;
@@ -358,13 +359,15 @@
           <span class="stub-tag">coming soon</span>`;
       }
       case 'lastfm': {
-        const mode = data.mode || 'nowplaying';
+        const mode    = data.mode || 'nowplaying';
+        const showArt = data.show_art !== false;
         return `
           <input type="text" class="f-user" placeholder="Last.fm username" value="${esc(data.username || '')}">
           <select class="f-mode">
             <option value="nowplaying" ${mode === 'nowplaying' ? 'selected' : ''}>Now Playing</option>
             <option value="recent"     ${mode === 'recent'     ? 'selected' : ''}>Recent Tracks</option>
-          </select>`;
+          </select>
+          <label class="f-art-label"><input type="checkbox" class="f-art"${showArt ? ' checked' : ''}> Show album art</label>`;
       }
       case 'septa': {
         return `
@@ -506,7 +509,7 @@
         case 'nfl':
           return { type, team: f.querySelector('.f-team')?.value || '', mode: f.querySelector('.f-mode')?.value || 'schedule' };
         case 'lastfm':
-          return { type, username: f.querySelector('.f-user')?.value.trim() || '', mode: f.querySelector('.f-mode')?.value || 'nowplaying' };
+          return { type, username: f.querySelector('.f-user')?.value.trim() || '', mode: f.querySelector('.f-mode')?.value || 'nowplaying', show_art: f.querySelector('.f-art')?.checked !== false };
         case 'septa':
           return { type, route: f.querySelector('.f-route')?.value.trim() || '', stop_id: f.querySelector('.f-stop')?.value.trim() || '' };
         default:
