@@ -265,11 +265,11 @@ app.get('/api/device/:mac/config', async (req, res) => {
     const {
       station_id, display_name, modules,
       brightness, scroll_speed,
-      openweather_api_key, zip_code,
+      openweather_api_key, zip_code, pages,
     } = doc.data();
 
     console.log(`[DEVICE] Config fetched: ${mac} → station ${station_id}`);
-    res.json({ station_id, display_name, modules, brightness, scroll_speed, openweather_api_key, zip_code });
+    res.json({ station_id, display_name, modules, brightness, scroll_speed, openweather_api_key, zip_code, pages: pages || [] });
 
   } catch (err) {
     console.error('[DEVICE] Config error:', err.message);
@@ -296,6 +296,7 @@ app.get('/api/devices', async (req, res) => {
         openweather_api_key: d.openweather_api_key,
         zip_code:            d.zip_code,
         modules:             d.modules,
+        pages:               d.pages || [],
         last_seen:     d.last_seen?.toDate?.()?.toISOString() ?? null,
         registered_at: d.registered_at?.toDate?.()?.toISOString() ?? null,
       });
@@ -316,7 +317,7 @@ app.patch('/api/device/:mac/config', async (req, res) => {
   const mac    = req.params.mac.toLowerCase();
   const docRef = db.collection('devices').doc(mac);
 
-  const ALLOWED = ['display_name', 'station_id', 'brightness', 'scroll_speed', 'openweather_api_key', 'zip_code'];
+  const ALLOWED = ['display_name', 'station_id', 'brightness', 'scroll_speed', 'openweather_api_key', 'zip_code', 'pages'];
   const updates = {};
   for (const key of ALLOWED) {
     if (key in req.body) updates[key] = req.body[key];

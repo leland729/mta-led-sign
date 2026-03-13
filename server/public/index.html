@@ -15,12 +15,12 @@
       padding: 24px 16px 48px;
     }
 
-    /* ── Header ─────────────────────────────────────── */
+    /* ── Header ─────────────────────────────────────────────── */
     header {
       display: flex;
       align-items: center;
       gap: 14px;
-      max-width: 680px;
+      max-width: 700px;
       margin: 0 auto 28px;
     }
 
@@ -29,255 +29,168 @@
       background: #6cbe45;
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-weight: 900;
-      font-size: 20px;
-      color: #000;
-      flex-shrink: 0;
-      letter-spacing: -1px;
+      font-weight: 900; font-size: 20px; color: #000;
+      flex-shrink: 0; letter-spacing: -1px;
     }
 
-    .header-text h1 {
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: #fff;
-      line-height: 1.2;
-    }
+    .header-text h1 { font-size: 1.2rem; font-weight: 700; color: #fff; line-height: 1.2; }
+    .header-text p  { font-size: 0.75rem; color: #555; margin-top: 2px; }
 
-    .header-text p {
-      font-size: 0.75rem;
-      color: #555;
-      margin-top: 2px;
-    }
-
-    .header-actions {
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .last-refresh {
-      font-size: 0.72rem;
-      color: #444;
-    }
+    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .last-refresh   { font-size: 0.72rem; color: #444; }
 
     .btn-ghost {
-      background: none;
-      border: 1px solid #2e2e2e;
-      color: #777;
-      padding: 6px 14px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.78rem;
-      transition: border-color 0.15s, color 0.15s;
+      background: none; border: 1px solid #2e2e2e; color: #777;
+      padding: 6px 14px; border-radius: 6px; cursor: pointer;
+      font-size: 0.78rem; transition: border-color 0.15s, color 0.15s;
     }
     .btn-ghost:hover { border-color: #6cbe45; color: #6cbe45; }
 
-    /* ── Device grid ─────────────────────────────────── */
-    #devices {
-      max-width: 680px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
+    /* ── Device list ──────────────────────────────────────────── */
+    #devices { max-width: 700px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 
-    /* ── Device card ─────────────────────────────────── */
-    .card {
-      background: #181818;
-      border: 1px solid #242424;
-      border-radius: 12px;
-      overflow: hidden;
-    }
+    /* ── Card ────────────────────────────────────────────────── */
+    .card { background: #181818; border: 1px solid #242424; border-radius: 12px; overflow: hidden; }
 
     .card-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 15px 18px;
-      border-bottom: 1px solid #222;
+      display: flex; align-items: center; gap: 12px;
+      padding: 15px 18px; border-bottom: 1px solid #222;
     }
 
-    .status-dot {
-      width: 9px; height: 9px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      transition: background 0.3s;
-    }
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; transition: background 0.3s; }
     .status-dot.online  { background: #6cbe45; box-shadow: 0 0 7px #6cbe4588; }
     .status-dot.recent  { background: #e8a000; box-shadow: 0 0 7px #e8a00066; }
     .status-dot.offline { background: #3a3a3a; }
 
     .card-name {
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: #fff;
-      flex: 1;
-      min-width: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      font-size: 0.95rem; font-weight: 600; color: #fff;
+      flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
-    .card-meta {
-      text-align: right;
-      flex-shrink: 0;
-    }
+    .card-meta { text-align: right; flex-shrink: 0; }
+    .card-mac  { font-size: 0.7rem; color: #444; font-family: 'SF Mono', 'Fira Code', monospace; }
+    .card-seen { font-size: 0.7rem; color: #555; margin-top: 2px; }
 
-    .card-mac {
-      font-size: 0.7rem;
-      color: #444;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-    }
+    /* ── Card body ───────────────────────────────────────────── */
+    .card-body { padding: 18px 18px 8px; }
 
-    .card-seen {
-      font-size: 0.7rem;
-      color: #555;
-      margin-top: 2px;
-    }
-
-    /* ── Card body / form ────────────────────────────── */
-    .card-body {
-      padding: 18px 18px 4px;
-    }
-
+    /* ── Global setting fields (label + control) ─────────────── */
     .field {
-      display: grid;
-      grid-template-columns: 120px 1fr;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 13px;
+      display: grid; grid-template-columns: 116px 1fr;
+      align-items: center; gap: 10px; margin-bottom: 12px;
     }
 
-    .field label {
-      font-size: 0.75rem;
-      color: #666;
-      text-align: right;
-      white-space: nowrap;
-    }
+    .field label { font-size: 0.75rem; color: #666; text-align: right; white-space: nowrap; }
 
     .field input[type="text"],
     .field input[type="number"],
     .field select {
-      width: 100%;
-      background: #111;
-      border: 1px solid #2c2c2c;
-      border-radius: 6px;
-      color: #e0e0e0;
-      font-size: 0.82rem;
-      padding: 7px 9px;
-      outline: none;
-      transition: border-color 0.15s;
-      appearance: none;
+      width: 100%; background: #111; border: 1px solid #2c2c2c; border-radius: 6px;
+      color: #e0e0e0; font-size: 0.82rem; padding: 7px 9px;
+      outline: none; transition: border-color 0.15s; appearance: none;
     }
-
-    .field input:focus,
-    .field select:focus {
-      border-color: #6cbe45;
-    }
-
+    .field input:focus, .field select:focus { border-color: #6cbe45; }
     .field select {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 10px center;
-      padding-right: 28px;
+      background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px;
     }
-
     .field select option { background: #181818; }
 
-    /* Brightness slider */
-    .slider-wrap {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .slider-wrap { display: flex; align-items: center; gap: 8px; }
+    .slider-wrap input[type="range"] { flex: 1; accent-color: #6cbe45; height: 4px; }
+    .slider-val { font-size: 0.75rem; color: #888; width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+
+    .field-narrow input { max-width: 88px; }
+
+    /* ── Pages section ───────────────────────────────────────── */
+    .pages-section { margin-top: 6px; padding-top: 14px; border-top: 1px solid #222; margin-bottom: 6px; }
+
+    .pages-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
     }
 
-    .slider-wrap input[type="range"] {
-      flex: 1;
-      accent-color: #6cbe45;
-      height: 4px;
+    .pages-label { font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 0.07em; }
+
+    .btn-add-page {
+      background: none; border: 1px dashed #2e2e2e; color: #555;
+      padding: 4px 10px; border-radius: 5px; cursor: pointer;
+      font-size: 0.75rem; transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-add-page:hover:not(:disabled) { border-color: #6cbe45; color: #6cbe45; }
+    .btn-add-page:disabled { opacity: 0.3; cursor: default; }
+
+    /* ── Page row ────────────────────────────────────────────── */
+    .page-row { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+
+    .page-num { font-size: 0.68rem; color: #444; width: 14px; text-align: right; flex-shrink: 0; }
+
+    /* Shared input/select style for page row controls */
+    .page-row select,
+    .page-row input[type="text"] {
+      background: #111; border: 1px solid #2c2c2c; border-radius: 6px;
+      color: #e0e0e0; font-size: 0.78rem; padding: 6px 8px;
+      outline: none; transition: border-color 0.15s; min-width: 0;
+    }
+    .page-row select:focus, .page-row input:focus { border-color: #6cbe45; }
+    .page-row select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 7px center; padding-right: 22px;
+    }
+    .page-row select option { background: #181818; }
+
+    .page-type-sel { width: 90px; flex-shrink: 0; }
+
+    .page-fields { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+
+    .line-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Per-field width hints */
+    .f-line    { width: 72px !important; flex-shrink: 0; }
+    .f-station { flex: 1; }
+    .f-zip     { width: 68px !important; flex-shrink: 0; }
+    .f-mode    { flex: 1; }
+    .f-user    { flex: 1; }
+    .f-team    { flex: 1; }
+    .f-route   { width: 68px !important; flex-shrink: 0; }
+    .f-stop    { flex: 1; }
+
+    .stub-tag {
+      font-size: 0.6rem; color: #444; border: 1px solid #262626;
+      border-radius: 3px; padding: 2px 5px; white-space: nowrap; flex-shrink: 0;
     }
 
-    .slider-val {
-      font-size: 0.75rem;
-      color: #888;
-      width: 30px;
-      text-align: right;
-      font-variant-numeric: tabular-nums;
+    .btn-remove-page {
+      background: none; border: none; color: #383838; cursor: pointer;
+      font-size: 0.95rem; padding: 3px 5px; border-radius: 4px; line-height: 1;
+      transition: color 0.15s, background 0.15s; flex-shrink: 0;
     }
+    .btn-remove-page:hover { color: #e05050; background: #2a1515; }
 
-    .field-narrow input {
-      max-width: 90px;
-    }
-
-    /* ── Card footer ─────────────────────────────────── */
+    /* ── Card footer ─────────────────────────────────────────── */
     .card-footer {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 10px;
-      padding: 12px 18px;
-      border-top: 1px solid #1e1e1e;
+      display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+      padding: 12px 18px; border-top: 1px solid #1e1e1e;
     }
 
-    .save-msg {
-      font-size: 0.75rem;
-      opacity: 0;
-      transition: opacity 0.25s;
-    }
-    .save-msg.ok    { color: #6cbe45; opacity: 1; }
-    .save-msg.err   { color: #e05050; opacity: 1; }
+    .save-msg { font-size: 0.75rem; opacity: 0; transition: opacity 0.25s; }
+    .save-msg.ok  { color: #6cbe45; opacity: 1; }
+    .save-msg.err { color: #e05050; opacity: 1; }
 
     .btn-save {
-      background: #6cbe45;
-      color: #000;
-      border: none;
-      border-radius: 6px;
-      padding: 7px 20px;
-      font-weight: 700;
-      font-size: 0.82rem;
-      cursor: pointer;
-      transition: background 0.15s;
+      background: #6cbe45; color: #000; border: none; border-radius: 6px;
+      padding: 7px 20px; font-weight: 700; font-size: 0.82rem;
+      cursor: pointer; transition: background 0.15s;
     }
     .btn-save:hover   { background: #7fd456; }
     .btn-save:active  { background: #59a836; }
     .btn-save:disabled { background: #2e2e2e; color: #555; cursor: default; }
 
-    /* ── Line selector ───────────────────────────────── */
-    .line-select-wrap {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .line-bullet {
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.6rem;
-      font-weight: 900;
-      color: #000;
-      transition: background 0.15s;
-    }
-
-    .line-bullet.light-text { color: #fff; }
-
-    .line-select-wrap select {
-      flex: 1;
-    }
-
-    /* ── States ──────────────────────────────────────── */
-    .state-box {
-      text-align: center;
-      padding: 56px 20px;
-      color: #3a3a3a;
-    }
+    /* ── Empty / error states ────────────────────────────────── */
+    .state-box { text-align: center; padding: 56px 20px; color: #3a3a3a; }
     .state-box .icon { font-size: 2.5rem; margin-bottom: 12px; }
     .state-box p { font-size: 0.85rem; line-height: 1.6; }
+    .state-box code { font-size: 0.78rem; color: #555; }
   </style>
 </head>
 <body>
@@ -301,35 +214,39 @@
 <script>
   let stations = [];
 
-  // MTA line group display config — label + official bullet color
   const LINE_GROUPS = {
-    'ACE':  { label: 'A / C / E',   color: '#2850AD' },
-    'BDFM': { label: 'B / D / F / M', color: '#FF6319' },
-    'G':    { label: 'G',           color: '#6CBE45' },
-    'JZ':   { label: 'J / Z',       color: '#996633' },
-    'L':    { label: 'L',           color: '#A7A9AC' },
-    'NQRW': { label: 'N / Q / R / W', color: '#FCCC0A' },
-    '123':  { label: '1 / 2 / 3',   color: '#EE352E' },
-    '456':  { label: '4 / 5 / 6',   color: '#00933C' },
-    '7':    { label: '7',           color: '#B933AD' },
+    'ACE':  { label: 'A/C/E',   color: '#2850AD' },
+    'BDFM': { label: 'B/D/F/M', color: '#FF6319' },
+    'G':    { label: 'G',       color: '#6CBE45' },
+    'JZ':   { label: 'J/Z',     color: '#996633' },
+    'L':    { label: 'L',       color: '#A7A9AC' },
+    'NQRW': { label: 'N/Q/R/W', color: '#FCCC0A' },
+    '123':  { label: '1/2/3',   color: '#EE352E' },
+    '456':  { label: '4/5/6',   color: '#00933C' },
+    '7':    { label: '7',       color: '#B933AD' },
   };
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  const MLB_TEAMS = ['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET',
+                     'HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK',
+                     'PHI','PIT','SD','SF','SEA','STL','TB','TEX','TOR','WSH'];
+  const NFL_TEAMS = ['ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN',
+                     'DET','GB','HOU','IND','JAX','KC','LAC','LAR','LV','MIA',
+                     'MIN','NE','NO','NYG','NYJ','PHI','PIT','SEA','SF','TB','TEN','WSH'];
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
 
   function esc(s) {
     return String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function relTime(iso) {
     if (!iso) return 'Never';
     const sec = Math.floor((Date.now() - new Date(iso)) / 1000);
-    if (sec < 5)    return 'just now';
-    if (sec < 60)   return `${sec}s ago`;
-    if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+    if (sec < 5)     return 'just now';
+    if (sec < 60)    return `${sec}s ago`;
+    if (sec < 3600)  return `${Math.floor(sec / 60)}m ago`;
     if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
     return `${Math.floor(sec / 86400)}d ago`;
   }
@@ -342,52 +259,205 @@
     return 'offline';
   }
 
-  function deviceId(mac) {
-    return 'dev-' + mac.replace(/:/g, '');
-  }
+  function devId(mac) { return 'dev-' + mac.replace(/:/g, ''); }
 
-  // ── Line change: update bullet color + repopulate station dropdown ───────────
+  function lineColor(lg) { return LINE_GROUPS[lg]?.color ?? '#444'; }
 
-  function onLineChange(id, lineGroup) {
-    // Update bullet
-    const bullet = document.getElementById(`${id}-bullet`);
-    if (bullet) {
-      const cfg = LINE_GROUPS[lineGroup];
-      bullet.style.background = cfg?.color ?? '#444';
-      // Light text for dark backgrounds; dark text for yellow/green/grey lines
-      const lightText = !['NQRW', '123', 'L'].includes(lineGroup);
-      bullet.classList.toggle('light-text', lightText);
-    }
-    // Repopulate station dropdown (no pre-selected stop)
-    const sel = document.getElementById(`${id}-station`);
-    if (!sel) return;
-    const filtered = stations.filter(s => s.line_group === lineGroup);
-    sel.innerHTML = filtered.map(s =>
-      `<option value="${esc(s.stop_id)}">${esc(s.stop_name)}</option>`
+  // ── Page field HTML builders ─────────────────────────────────────────────────
+
+  function lineOpts(selected) {
+    return Object.entries(LINE_GROUPS).map(([k, v]) =>
+      `<option value="${esc(k)}" ${k === selected ? 'selected' : ''}>${esc(v.label)}</option>`
     ).join('');
   }
 
-  // ── Build card HTML ────────────────────────────────────────────────────────
+  function stationOpts(lineGroup, selectedId) {
+    return stations
+      .filter(s => s.line_group === lineGroup)
+      .map(s => `<option value="${esc(s.stop_id)}" ${s.stop_id === selectedId ? 'selected' : ''}>${esc(s.stop_name)}</option>`)
+      .join('');
+  }
+
+  function teamOpts(teams, selected) {
+    return teams.map(t => `<option value="${t}" ${t === selected ? 'selected' : ''}>${t}</option>`).join('');
+  }
+
+  function pageFieldsHTML(type, data) {
+    switch (type) {
+      case 'mta': {
+        const line = data.line || 'G';
+        const sid  = data.station_id || '';
+        return `
+          <span class="line-dot" style="background:${esc(lineColor(line))}"></span>
+          <select class="f-line" onchange="onLineChange(this)">${lineOpts(line)}</select>
+          <select class="f-station">${stationOpts(line, sid)}</select>`;
+      }
+      case 'weather': {
+        const mode = data.mode || 'current';
+        return `
+          <input type="text" class="f-zip" placeholder="Zip code" maxlength="10" value="${esc(data.zip || '')}">
+          <select class="f-mode">
+            <option value="current" ${mode === 'current' ? 'selected' : ''}>Current</option>
+            <option value="3-day"   ${mode === '3-day'   ? 'selected' : ''}>3-Day Forecast</option>
+            <option value="7-day"   ${mode === '7-day'   ? 'selected' : ''}>7-Day Forecast</option>
+          </select>`;
+      }
+      case 'mlb': {
+        const team = data.team || 'NYM';
+        const mode = data.mode || 'schedule';
+        return `
+          <select class="f-team">${teamOpts(MLB_TEAMS, team)}</select>
+          <select class="f-mode">
+            <option value="schedule" ${mode === 'schedule' ? 'selected' : ''}>Schedule</option>
+            <option value="live"     ${mode === 'live'     ? 'selected' : ''}>Live Score</option>
+          </select>
+          <span class="stub-tag">coming soon</span>`;
+      }
+      case 'nfl': {
+        const team = data.team || 'NYG';
+        const mode = data.mode || 'schedule';
+        return `
+          <select class="f-team">${teamOpts(NFL_TEAMS, team)}</select>
+          <select class="f-mode">
+            <option value="schedule" ${mode === 'schedule' ? 'selected' : ''}>Schedule</option>
+            <option value="live"     ${mode === 'live'     ? 'selected' : ''}>Live Score</option>
+          </select>
+          <span class="stub-tag">coming soon</span>`;
+      }
+      case 'lastfm': {
+        const mode = data.mode || 'nowplaying';
+        return `
+          <input type="text" class="f-user" placeholder="Last.fm username" value="${esc(data.username || '')}">
+          <select class="f-mode">
+            <option value="nowplaying" ${mode === 'nowplaying' ? 'selected' : ''}>Now Playing</option>
+            <option value="recent"     ${mode === 'recent'     ? 'selected' : ''}>Recent Tracks</option>
+          </select>`;
+      }
+      case 'septa': {
+        return `
+          <input type="text" class="f-route" placeholder="Route" value="${esc(data.route || '')}">
+          <input type="text" class="f-stop"  placeholder="Stop ID" value="${esc(data.stop_id || '')}">
+          <span class="stub-tag">coming soon</span>`;
+      }
+      default:
+        return '';
+    }
+  }
+
+  const PAGE_TYPE_LABELS = [
+    ['mta',     'NYC MTA'],
+    ['weather', 'Weather'],
+    ['mlb',     'MLB'],
+    ['nfl',     'NFL'],
+    ['lastfm',  'Last.FM'],
+    ['septa',   'SEPTA'],
+  ];
+
+  function pageRowHTML(data, index) {
+    const type     = data.type || 'mta';
+    const typeOpts = PAGE_TYPE_LABELS
+      .map(([v, l]) => `<option value="${v}" ${v === type ? 'selected' : ''}>${l}</option>`)
+      .join('');
+
+    return `<div class="page-row">
+  <span class="page-num">${index + 1}</span>
+  <select class="page-type-sel" onchange="onPageTypeChange(this)">${typeOpts}</select>
+  <div class="page-fields">${pageFieldsHTML(type, data)}</div>
+  <button class="btn-remove-page" onclick="removePage(this)" title="Remove page">×</button>
+</div>`;
+  }
+
+  // ── Page row event handlers ──────────────────────────────────────────────────
+
+  function onPageTypeChange(sel) {
+    const row  = sel.closest('.page-row');
+    const type = sel.value;
+    row.querySelector('.page-fields').innerHTML = pageFieldsHTML(type, {});
+  }
+
+  function onLineChange(lineSel) {
+    const row  = lineSel.closest('.page-row');
+    const line = lineSel.value;
+    const dot  = row.querySelector('.line-dot');
+    const st   = row.querySelector('.f-station');
+    if (dot) dot.style.background = lineColor(line);
+    if (st)  st.innerHTML = stationOpts(line, '');
+  }
+
+  function removePage(btn) {
+    const list = btn.closest('.pages-list');
+    btn.closest('.page-row').remove();
+    renumberPages(list);
+    updateAddBtn(list);
+  }
+
+  function addPage(btn) {
+    const list  = btn.closest('.card-body').querySelector('.pages-list');
+    const count = list.querySelectorAll('.page-row').length;
+    if (count >= 5) return;
+    list.insertAdjacentHTML('beforeend', pageRowHTML({ type: 'mta' }, count));
+    renumberPages(list);
+    updateAddBtn(list);
+  }
+
+  function renumberPages(list) {
+    list.querySelectorAll('.page-num').forEach((el, i) => { el.textContent = i + 1; });
+  }
+
+  function updateAddBtn(list) {
+    const btn   = list.closest('.card-body').querySelector('.btn-add-page');
+    if (!btn) return;
+    const count = list.querySelectorAll('.page-row').length;
+    btn.disabled    = count >= 5;
+    btn.textContent = count >= 5 ? '+ Add Page (max 5)' : '+ Add Page';
+  }
+
+  // ── Collect pages from DOM ───────────────────────────────────────────────────
+
+  function getPages(list) {
+    return Array.from(list.querySelectorAll('.page-row')).map(row => {
+      const type = row.querySelector('.page-type-sel').value;
+      const f    = row.querySelector('.page-fields');
+      switch (type) {
+        case 'mta':
+          return { type, line: f.querySelector('.f-line')?.value || 'G', station_id: f.querySelector('.f-station')?.value || '' };
+        case 'weather':
+          return { type, zip: f.querySelector('.f-zip')?.value.trim() || '', mode: f.querySelector('.f-mode')?.value || 'current' };
+        case 'mlb':
+        case 'nfl':
+          return { type, team: f.querySelector('.f-team')?.value || '', mode: f.querySelector('.f-mode')?.value || 'schedule' };
+        case 'lastfm':
+          return { type, username: f.querySelector('.f-user')?.value.trim() || '', mode: f.querySelector('.f-mode')?.value || 'nowplaying' };
+        case 'septa':
+          return { type, route: f.querySelector('.f-route')?.value.trim() || '', stop_id: f.querySelector('.f-stop')?.value.trim() || '' };
+        default:
+          return { type };
+      }
+    });
+  }
+
+  // ── Build card HTML ──────────────────────────────────────────────────────────
 
   function buildCard(d) {
-    const id  = deviceId(d.mac);
-    const st  = statusClass(d.last_seen);
-    const bv  = (d.brightness ?? 0.4).toFixed(2);
+    const id = devId(d.mac);
+    const st = statusClass(d.last_seen);
+    const bv = (d.brightness ?? 0.4).toFixed(2);
 
-    // Determine which line group the device's current station belongs to
-    const currentStation = stations.find(s => s.stop_id === d.station_id);
-    const currentLine    = currentStation?.line_group ?? Object.keys(LINE_GROUPS)[0];
+    // Auto-migrate flat config → pages for existing devices without pages
+    let pages = Array.isArray(d.pages) && d.pages.length > 0 ? d.pages : null;
+    if (!pages) {
+      pages = [];
+      if (d.station_id) {
+        const s = stations.find(s => s.stop_id === d.station_id);
+        pages.push({ type: 'mta', line: s?.line_group || 'G', station_id: d.station_id });
+      }
+      if (d.zip_code) {
+        pages.push({ type: 'weather', zip: d.zip_code, mode: 'current' });
+      }
+    }
 
-    // Line selector options
-    const lineOpts = Object.entries(LINE_GROUPS).map(([key, cfg]) =>
-      `<option value="${esc(key)}" ${key === currentLine ? 'selected' : ''}>${esc(cfg.label)}</option>`
-    ).join('');
-
-    // Station options for the currently selected line
-    const stationOpts = stations
-      .filter(s => s.line_group === currentLine)
-      .map(s => `<option value="${esc(s.stop_id)}" ${s.stop_id === d.station_id ? 'selected' : ''}>${esc(s.stop_name)}</option>`)
-      .join('');
+    const pagesHTML  = pages.map((p, i) => pageRowHTML(p, i)).join('');
+    const addDisabled = pages.length >= 5 ? 'disabled' : '';
 
     return `
 <div class="card" id="${id}" data-mac="${esc(d.mac)}">
@@ -407,25 +477,9 @@
     </div>
 
     <div class="field">
-      <label for="${id}-line">Line</label>
-      <div class="line-select-wrap">
-        <div class="line-bullet ${['NQRW','123'].includes(currentLine) ? '' : 'light-text'}"
-             id="${id}-bullet"
-             style="background:${esc(LINE_GROUPS[currentLine]?.color ?? '#444')}"></div>
-        <select id="${id}-line" onchange="onLineChange('${esc(id)}', this.value)">${lineOpts}</select>
-      </div>
-    </div>
-
-    <div class="field">
-      <label for="${id}-station">Station</label>
-      <select id="${id}-station">${stationOpts}</select>
-    </div>
-
-    <div class="field">
       <label for="${id}-brightness">Brightness</label>
       <div class="slider-wrap">
-        <input type="range" id="${id}-brightness"
-          min="0.05" max="1.0" step="0.05" value="${bv}"
+        <input type="range" id="${id}-brightness" min="0.05" max="1.0" step="0.05" value="${bv}"
           oninput="document.getElementById('${id}-bval').textContent = parseFloat(this.value).toFixed(2)">
         <span class="slider-val" id="${id}-bval">${bv}</span>
       </div>
@@ -433,20 +487,22 @@
 
     <div class="field field-narrow">
       <label for="${id}-speed">View cycle</label>
-      <input type="number" id="${id}-speed"
-        value="${d.scroll_speed ?? 10}" min="3" max="120" step="1"
-        title="Seconds each view (subway / weather / forecast) stays on screen">
-    </div>
-
-    <div class="field field-narrow">
-      <label for="${id}-zip">Zip code</label>
-      <input type="text" id="${id}-zip" value="${esc(d.zip_code)}" placeholder="11222" maxlength="10">
+      <input type="number" id="${id}-speed" value="${d.scroll_speed ?? 10}" min="3" max="120" step="1"
+        title="Seconds each page stays on screen">
     </div>
 
     <div class="field">
-      <label for="${id}-key">Weather API key</label>
+      <label for="${id}-key">Weather key</label>
       <input type="text" id="${id}-key" value="${esc(d.openweather_api_key)}"
-        placeholder="OpenWeatherMap key" autocomplete="off" spellcheck="false">
+        placeholder="OpenWeatherMap API key" autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="pages-section">
+      <div class="pages-header">
+        <span class="pages-label">Pages</span>
+        <button class="btn-add-page" onclick="addPage(this)" ${addDisabled}>+ Add Page</button>
+      </div>
+      <div class="pages-list">${pagesHTML}</div>
     </div>
   </div>
 
@@ -457,7 +513,7 @@
 </div>`;
   }
 
-  // ── Load devices ───────────────────────────────────────────────────────────
+  // ── Load devices ─────────────────────────────────────────────────────────────
 
   async function loadDevices() {
     try {
@@ -477,15 +533,13 @@
         container.innerHTML = `
           <div class="state-box">
             <div class="icon">📡</div>
-            <p>No devices registered yet.<br>Power on a sign — it will register automatically on boot.</p>
+            <p>No devices registered yet.<br>Power on a sign — it will appear here automatically.</p>
           </div>`;
         return;
       }
 
       container.innerHTML = devices.map(buildCard).join('');
-
-      document.getElementById('last-refresh').textContent =
-        'Updated ' + new Date().toLocaleTimeString();
+      document.getElementById('last-refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
 
     } catch (err) {
       document.getElementById('devices').innerHTML = `
@@ -496,24 +550,32 @@
     }
   }
 
-  // ── Save a device ──────────────────────────────────────────────────────────
+  // ── Save device ──────────────────────────────────────────────────────────────
 
   async function saveDevice(mac) {
-    const id  = deviceId(mac);
-    const msg = document.getElementById(`${id}-msg`);
-    const btn = document.querySelector(`#${id} .btn-save`);
+    const id      = devId(mac);
+    const msg     = document.getElementById(`${id}-msg`);
+    const btn     = document.querySelector(`#${id} .btn-save`);
+    const list    = document.querySelector(`#${id} .pages-list`);
+
+    const pages = getPages(list);
+
+    // Backward compat: keep flat station_id/zip_code for current firmware
+    const mtaPage     = pages.find(p => p.type === 'mta');
+    const weatherPage = pages.find(p => p.type === 'weather');
 
     const body = {
       display_name:        document.getElementById(`${id}-name`).value.trim(),
-      station_id:          document.getElementById(`${id}-station`).value,
       brightness:          parseFloat(document.getElementById(`${id}-brightness`).value),
       scroll_speed:        parseInt(document.getElementById(`${id}-speed`).value, 10),
-      zip_code:            document.getElementById(`${id}-zip`).value.trim(),
       openweather_api_key: document.getElementById(`${id}-key`).value.trim(),
+      pages,
+      station_id:          mtaPage?.station_id || '',
+      zip_code:            weatherPage?.zip    || '',
     };
 
-    btn.disabled = true;
-    msg.className = 'save-msg';
+    btn.disabled    = true;
+    msg.className   = 'save-msg';
     msg.textContent = '';
 
     try {
@@ -524,30 +586,25 @@
       });
 
       if (res.ok) {
-        // Update card header name immediately
-        const card = document.getElementById(id);
-        card.querySelector('.card-name').textContent = body.display_name || mac;
-
-        msg.className = 'save-msg ok';
+        document.querySelector(`#${id} .card-name`).textContent = body.display_name || mac;
+        msg.className   = 'save-msg ok';
         msg.textContent = 'Saved ✓';
         setTimeout(() => { msg.className = 'save-msg'; }, 3000);
       } else {
         const data = await res.json().catch(() => ({}));
-        msg.className = 'save-msg err';
+        msg.className   = 'save-msg err';
         msg.textContent = data.error || `Error ${res.status}`;
       }
     } catch (err) {
-      msg.className = 'save-msg err';
+      msg.className   = 'save-msg err';
       msg.textContent = 'Network error';
     }
 
     btn.disabled = false;
   }
 
-  // ── Auto-refresh every 30s ─────────────────────────────────────────────────
+  // ── Auto-refresh every 30s ───────────────────────────────────────────────────
   setInterval(loadDevices, 30_000);
-
-  // Initial load
   loadDevices();
 </script>
 

@@ -408,14 +408,15 @@ class NetworkManager:
             self.connected = False
             return False
     
-    def fetch_trains(self):
+    def fetch_trains(self, station_id=None):
         """Fetch train data from server"""
         if not self.connected or not self.requests:
             if not self.connect():
                 return None
-        
+
         try:
-            url = f"{SERVER_URL}/api/next/{CFG['station_id']}"
+            sid = station_id or CFG['station_id']
+            url = f"{SERVER_URL}/api/next/{sid}"
             print(f"Fetching: {url}")
             
             response = self.requests.get(url, timeout=10)
@@ -451,7 +452,7 @@ class NetworkManager:
 
         return None
 
-    def fetch_weather(self):
+    def fetch_weather(self, zip_code=None):
         """Fetch weather data from OpenWeatherMap API"""
         if not CFG['weather_api_key']:
             print("No weather API key configured")
@@ -462,7 +463,8 @@ class NetworkManager:
                 return None
 
         try:
-            url = f"https://api.openweathermap.org/data/2.5/weather?zip={CFG['zip_code']},us&appid={CFG['weather_api_key']}&units=imperial"
+            z = zip_code or CFG['zip_code']
+            url = f"https://api.openweathermap.org/data/2.5/weather?zip={z},us&appid={CFG['weather_api_key']}&units=imperial"
             print(f"Fetching weather...")
 
             response = self.requests.get(url, timeout=10)
@@ -496,7 +498,7 @@ class NetworkManager:
 
         return None
 
-    def fetch_forecast(self):
+    def fetch_forecast(self, zip_code=None):
         """Fetch 3-day weather forecast from OpenWeatherMap API"""
         if not CFG['weather_api_key']:
             print("No weather API key configured")
@@ -508,7 +510,8 @@ class NetworkManager:
 
         try:
             # Use 5-day/3-hour forecast API (free tier)
-            url = f"https://api.openweathermap.org/data/2.5/forecast?zip={CFG['zip_code']},us&appid={CFG['weather_api_key']}&units=imperial"
+            z = zip_code or CFG['zip_code']
+            url = f"https://api.openweathermap.org/data/2.5/forecast?zip={z},us&appid={CFG['weather_api_key']}&units=imperial"
             print(f"Fetching forecast...")
 
             response = self.requests.get(url, timeout=15)
@@ -655,6 +658,8 @@ print("\nStarting main program...")
 weather_data = None
 forecast_data = None
 connected = False
+# Default carousel — overridden after Firestore config is loaded
+CAROUSEL = [{'type': 'mta', 'station_id': CFG['station_id']}]
 
 for attempt in range(3):
     display.show_splash("Connecting", "WiFi {}/3".format(attempt + 1))
@@ -672,36 +677,51 @@ if connected:
     # Returned values override the compiled-in defaults above.
     config = network.register_and_fetch_config()
     if config:
-        CFG['station_id']     = config.get('station_id', CFG['station_id'])
+        CFG['station_id']      = config.get('station_id', CFG['station_id'])
         CFG['weather_api_key'] = config.get('openweather_api_key', CFG['weather_api_key'])
-        CFG['zip_code']       = config.get('zip_code', CFG['zip_code'])
-        VIEW_CYCLE_INTERVAL   = config.get('scroll_speed', VIEW_CYCLE_INTERVAL)
-        BRIGHTNESS            = config.get('brightness', BRIGHTNESS)
+        CFG['zip_code']        = config.get('zip_code', CFG['zip_code'])
+        VIEW_CYCLE_INTERVAL    = config.get('scroll_speed', VIEW_CYCLE_INTERVAL)
+        BRIGHTNESS             = config.get('brightness', BRIGHTNESS)
         matrixportal.display.brightness = BRIGHTNESS
-        print("Firestore config applied")
+
+        # Build carousel from pages array; fall back to flat station_id/zip_code
+        raw_pages = config.get('pages', [])
+        CAROUSEL = [p for p in raw_pages if p.get('type') in ('mta', 'weather')]
+        if not CAROUSEL:
+            if CFG['station_id']:
+                CAROUSEL.append({'type': 'mta', 'station_id': CFG['station_id']})
+            if CFG['zip_code']:
+                CAROUSEL.append({'type': 'weather', 'zip': CFG['zip_code'], 'mode': 'current'})
+        if not CAROUSEL:
+            CAROUSEL = [{'type': 'mta', 'station_id': CFG['station_id']}]
+
+        print(f"Firestore config applied — {len(CAROUSEL)} page(s) in carousel")
 
     display.show_splash("Connected!", "Loading...")
     time.sleep(1)
 
+    # Fetch initial data for the first page in the carousel
     print("Fetching initial data...")
-    initial_data = network.fetch_trains()
-    if initial_data:
-        display.update(initial_data)
-        display.show_error(False)
-    else:
-        display.show_error(True)
-
-    # Fetch initial weather
-    print("Fetching initial weather...")
-    weather_data = network.fetch_weather()
-    if weather_data:
-        display.update_weather(weather_data)
-
-    # Fetch initial forecast
-    print("Fetching initial forecast...")
-    forecast_data = network.fetch_forecast()
-    if forecast_data:
-        display.update_forecast(forecast_data)
+    first = CAROUSEL[0] if CAROUSEL else {}
+    if first.get('type') == 'mta':
+        initial_data = network.fetch_trains(first.get('station_id'))
+        if initial_data:
+            display.update(initial_data)
+            display.show_error(False)
+        else:
+            display.show_error(True)
+    elif first.get('type') == 'weather':
+        z = first.get('zip', CFG['zip_code'])
+        if first.get('mode', 'current') == 'current':
+            w = network.fetch_weather(z)
+            if w:
+                display.update_weather(w)
+                display.scroll_to_view('weather')
+        else:
+            f = network.fetch_forecast(z)
+            if f:
+                display.update_forecast(f)
+                display.scroll_to_view('forecast')
 
     display.hide_splash()  # Reveal main display — data already populated
 else:
@@ -712,72 +732,62 @@ else:
     # Never reaches here — setup_mode.run() calls microcontroller.reset()
 
 # Main loop
-last_update = time.monotonic()
-last_weather_update = time.monotonic()
-last_forecast_update = time.monotonic()
+last_update     = time.monotonic()
 last_view_cycle = time.monotonic()
-current_view_index = 0  # 0=subway, 1=weather, 2=forecast
-views = ["subway", "weather", "forecast"]
-print(f"Starting main loop - view cycles every {VIEW_CYCLE_INTERVAL}s")
+carousel_index  = 0
+print(f"Starting main loop — {len(CAROUSEL)} page(s), cycle every {VIEW_CYCLE_INTERVAL}s")
 
 while True:
     current_time = time.monotonic()
 
-    # Time for train update?
+    # Background train refresh for any MTA pages (keeps data current while on that view)
     if current_time - last_update >= UPDATE_INTERVAL:
-        print(f"\nTrain update cycle at {current_time:.0f}s")
-
-        # Fetch new train data
-        train_data = network.fetch_trains()
-
-        if train_data:
-            display.update(train_data)
-            display.show_error(False)
-            print("Trains updated successfully")
-        else:
-            display.show_error(True)
-            print("Failed to fetch train data")
-
+        print(f"\nBackground refresh at {current_time:.0f}s")
+        page = CAROUSEL[carousel_index]
+        if page.get('type') == 'mta':
+            train_data = network.fetch_trains(page.get('station_id'))
+            if train_data:
+                display.update(train_data)
+                display.show_error(False)
+            else:
+                display.show_error(True)
         last_update = current_time
         gc.collect()
         print(f"Free memory: {gc.mem_free()} bytes")
 
-    # Time for weather update?
-    if current_time - last_weather_update >= WEATHER_UPDATE_INTERVAL:
-        print(f"\nWeather update cycle at {current_time:.0f}s")
-
-        weather_data = network.fetch_weather()
-
-        if weather_data:
-            display.update_weather(weather_data)
-            print("Weather updated successfully")
-
-        last_weather_update = current_time
-        gc.collect()
-
-    # Time for forecast update?
-    if current_time - last_forecast_update >= FORECAST_UPDATE_INTERVAL:
-        print(f"\nForecast update cycle at {current_time:.0f}s")
-
-        forecast_data = network.fetch_forecast()
-
-        if forecast_data:
-            display.update_forecast(forecast_data)
-            print("Forecast updated successfully")
-
-        last_forecast_update = current_time
-        gc.collect()
-
-    # Time to cycle view?
+    # Time to advance carousel?
     if current_time - last_view_cycle >= VIEW_CYCLE_INTERVAL:
-        # Cycle through views: subway -> weather -> forecast -> subway
-        current_view_index = (current_view_index + 1) % len(views)
-        next_view = views[current_view_index]
+        carousel_index = (carousel_index + 1) % len(CAROUSEL)
+        page  = CAROUSEL[carousel_index]
+        ptype = page.get('type')
+        print(f"\nCarousel → page {carousel_index + 1}/{len(CAROUSEL)}: {ptype}")
 
-        print(f"Scrolling to {next_view} view")
-        display.scroll_to_view(next_view)
+        if ptype == 'mta':
+            sid  = page.get('station_id', CFG['station_id'])
+            data = network.fetch_trains(sid)
+            if data:
+                display.update(data)
+                display.show_error(False)
+            else:
+                display.show_error(True)
+            display.scroll_to_view('subway')
+
+        elif ptype == 'weather':
+            z    = page.get('zip', CFG['zip_code'])
+            mode = page.get('mode', 'current')
+            if mode == 'current':
+                w = network.fetch_weather(z)
+                if w:
+                    display.update_weather(w)
+                display.scroll_to_view('weather')
+            else:  # 3-day or 7-day
+                f = network.fetch_forecast(z)
+                if f:
+                    display.update_forecast(f)
+                display.scroll_to_view('forecast')
 
         last_view_cycle = current_time
+        gc.collect()
 
     # Small delay to prevent busy waiting
     time.sleep(0.2)
