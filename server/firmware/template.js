@@ -8,17 +8,18 @@ const TEMPLATE_PATH = path.join(__dirname, 'code.py');
 /**
  * generateFirmware(config, mac, serviceUrl)
  *
- * Reads circuitpy/code.py (the authoritative firmware template) and replaces
- * {{TOKEN}} placeholders with device-specific values from Firestore config.
+ * Reads firmware/code.py and replaces {{TOKEN}} placeholders with
+ * device-specific values from Firestore config.
  *
  * Tokens defined in code.py:
- *   {{HEADER}}          — generated device/build info lines
- *   {{SERVER_URL}}      — this server's public URL
- *   {{BRIGHTNESS}}      — float 0.0–1.0
- *   {{SCROLL_SPEED}}    — seconds per view panel (int)
- *   {{STATION_ID}}      — GTFS parent station ID (e.g. "G26")
- *   {{WEATHER_API_KEY}} — OpenWeatherMap API key
- *   {{ZIP_CODE}}        — zip code for weather queries
+ *   {{HEADER}}       — generated device/build info lines
+ *   {{SERVER_URL}}   — this server's public URL
+ *   {{BRIGHTNESS}}   — float 0.0–1.0
+ *   {{SCROLL_SPEED}} — seconds per view panel (int)
+ *   {{STATION_ID}}   — GTFS parent station ID fallback (e.g. "G26")
+ *
+ * All other config (pages, api keys, zip codes) is fetched live from
+ * Firestore on every device boot via /api/device/:mac/config.
  */
 function generateFirmware(config, mac, serviceUrl) {
   const template = fs.readFileSync(TEMPLATE_PATH, 'utf8');
@@ -31,13 +32,11 @@ function generateFirmware(config, mac, serviceUrl) {
   ].join('\n');
 
   return template
-    .replace('{{HEADER}}',          header)
-    .replace('{{SERVER_URL}}',      serviceUrl)
-    .replace('{{BRIGHTNESS}}',      config.brightness)
-    .replace('{{SCROLL_SPEED}}',    config.scroll_speed)
-    .replace('{{STATION_ID}}',      config.station_id)
-    .replace('{{WEATHER_API_KEY}}', config.openweather_api_key || '')
-    .replace('{{ZIP_CODE}}',        config.zip_code || '');
+    .replace('{{HEADER}}',       header)
+    .replace('{{SERVER_URL}}',   serviceUrl)
+    .replace('{{BRIGHTNESS}}',   config.brightness)
+    .replace('{{SCROLL_SPEED}}', config.scroll_speed)
+    .replace('{{STATION_ID}}',   config.station_id || 'G26');
 }
 
 module.exports = generateFirmware;

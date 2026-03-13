@@ -160,6 +160,15 @@
       border-radius: 3px; padding: 2px 5px; white-space: nowrap; flex-shrink: 0;
     }
 
+    .drag-handle {
+      cursor: grab; color: #333; font-size: 0.85rem; padding: 0 3px;
+      flex-shrink: 0; user-select: none; line-height: 1;
+    }
+    .drag-handle:active { cursor: grabbing; }
+
+    .page-row.dragging  { opacity: 0.35; }
+    .page-row.drag-over { border-top: 2px solid #6cbe45; margin-top: -2px; }
+
     .btn-remove-page {
       background: none; border: none; color: #383838; cursor: pointer;
       font-size: 0.95rem; padding: 3px 5px; border-radius: 4px; line-height: 1;
@@ -359,7 +368,10 @@
       .map(([v, l]) => `<option value="${v}" ${v === type ? 'selected' : ''}>${l}</option>`)
       .join('');
 
-    return `<div class="page-row">
+    return `<div class="page-row" draggable="true"
+  ondragstart="onDragStart(event)" ondragover="onDragOver(event)"
+  ondragleave="onDragLeave(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)">
+  <span class="drag-handle" title="Drag to reorder">⠿</span>
   <span class="page-num">${index + 1}</span>
   <select class="page-type-sel" onchange="onPageTypeChange(this)">${typeOpts}</select>
   <div class="page-fields">${pageFieldsHTML(type, data)}</div>
@@ -368,6 +380,49 @@
   }
 
   // ── Page row event handlers ──────────────────────────────────────────────────
+
+  let dragSrcRow = null;
+
+  function onDragStart(e) {
+    dragSrcRow = e.currentTarget;
+    dragSrcRow.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const row = e.currentTarget;
+    if (row !== dragSrcRow) row.classList.add('drag-over');
+  }
+
+  function onDragLeave(e) {
+    // Only remove class when truly leaving the row (not moving to a child)
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      e.currentTarget.classList.remove('drag-over');
+    }
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    const target = e.currentTarget;
+    target.classList.remove('drag-over');
+    if (!dragSrcRow || target === dragSrcRow) return;
+    const list = target.closest('.pages-list');
+    const rows = [...list.querySelectorAll('.page-row')];
+    if (rows.indexOf(dragSrcRow) < rows.indexOf(target)) {
+      target.after(dragSrcRow);
+    } else {
+      target.before(dragSrcRow);
+    }
+    renumberPages(list);
+  }
+
+  function onDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    document.querySelectorAll('.page-row.drag-over').forEach(r => r.classList.remove('drag-over'));
+    dragSrcRow = null;
+  }
 
   function onPageTypeChange(sel) {
     const row  = sel.closest('.page-row');
@@ -497,6 +552,12 @@
         placeholder="OpenWeatherMap API key" autocomplete="off" spellcheck="false">
     </div>
 
+    <div class="field">
+      <label for="${id}-lfm">Last.FM key</label>
+      <input type="text" id="${id}-lfm" value="${esc(d.lastfm_api_key || '')}"
+        placeholder="Last.FM API key" autocomplete="off" spellcheck="false">
+    </div>
+
     <div class="pages-section">
       <div class="pages-header">
         <span class="pages-label">Pages</span>
@@ -569,6 +630,7 @@
       brightness:          parseFloat(document.getElementById(`${id}-brightness`).value),
       scroll_speed:        parseInt(document.getElementById(`${id}-speed`).value, 10),
       openweather_api_key: document.getElementById(`${id}-key`).value.trim(),
+      lastfm_api_key:      document.getElementById(`${id}-lfm`).value.trim(),
       pages,
       station_id:          mtaPage?.station_id || '',
       zip_code:            weatherPage?.zip    || '',

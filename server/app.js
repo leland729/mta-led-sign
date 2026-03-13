@@ -2,11 +2,12 @@
 
 /**
  * NYC Subway Sign Server
- * Version : 1.3.0
- * Updated : 2026-03-11
- * Changes : Fix null crash in display.update() in firmware template.
- *           (data.get('north') or {}).get() handles null safely.
- *           code.py no longer has hardcoded station/zip — all config from Firestore.
+ * Version : 1.4.0
+ * Updated : 2026-03-13
+ * Changes : Page carousel — multi-widget server endpoints (weather proxy,
+ *           Last.FM, SEPTA/MLB/NFL stubs), firmware carousel rewrite with
+ *           4-panel scroll and lastfm support, Admin UI lastfm_api_key field
+ *           and drag-to-reorder pages.
  *
  * Fetches MTA GTFS-Realtime data, parses protobuf, and serves a JSON API
  * for Matrix Portal S3 devices. Includes Firestore-backed device config
@@ -44,7 +45,9 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const MTA_API_KEY = process.env.MTA_API_KEY;
+const MTA_API_KEY          = process.env.MTA_API_KEY;
+const OPENWEATHER_API_KEY  = process.env.OPENWEATHER_API_KEY;
+const LASTFM_API_KEY       = process.env.LASTFM_API_KEY;
 
 // This server's own public URL — injected into generated firmware so devices
 // know where to phone home. Override via SERVICE_URL env var if needed.
@@ -226,6 +229,7 @@ app.post('/api/device/:mac/register', async (req, res) => {
         brightness:          0.4,   // 0.0–1.0 float for MatrixPortal
         scroll_speed:        10,    // seconds per view panel
         openweather_api_key: '',    // set via Firestore console or admin UI
+        lastfm_api_key:      '',
         zip_code:            '11222',
         registered_at:       admin.firestore.FieldValue.serverTimestamp(),
         last_seen:           admin.firestore.FieldValue.serverTimestamp(),
@@ -265,11 +269,11 @@ app.get('/api/device/:mac/config', async (req, res) => {
     const {
       station_id, display_name, modules,
       brightness, scroll_speed,
-      openweather_api_key, zip_code, pages,
+      openweather_api_key, zip_code, pages, lastfm_api_key,
     } = doc.data();
 
     console.log(`[DEVICE] Config fetched: ${mac} → station ${station_id}`);
-    res.json({ station_id, display_name, modules, brightness, scroll_speed, openweather_api_key, zip_code, pages: pages || [] });
+    res.json({ station_id, display_name, modules, brightness, scroll_speed, openweather_api_key, zip_code, pages: pages || [], lastfm_api_key: lastfm_api_key || '' });
 
   } catch (err) {
     console.error('[DEVICE] Config error:', err.message);
@@ -297,6 +301,7 @@ app.get('/api/devices', async (req, res) => {
         zip_code:            d.zip_code,
         modules:             d.modules,
         pages:               d.pages || [],
+        lastfm_api_key:      d.lastfm_api_key || '',
         last_seen:     d.last_seen?.toDate?.()?.toISOString() ?? null,
         registered_at: d.registered_at?.toDate?.()?.toISOString() ?? null,
       });
@@ -317,7 +322,7 @@ app.patch('/api/device/:mac/config', async (req, res) => {
   const mac    = req.params.mac.toLowerCase();
   const docRef = db.collection('devices').doc(mac);
 
-  const ALLOWED = ['display_name', 'station_id', 'brightness', 'scroll_speed', 'openweather_api_key', 'zip_code', 'pages'];
+  const ALLOWED = ['display_name', 'station_id', 'brightness', 'scroll_speed', 'openweather_api_key', 'zip_code', 'pages', 'lastfm_api_key'];
   const updates = {};
   for (const key of ALLOWED) {
     if (key in req.body) updates[key] = req.body[key];
@@ -338,6 +343,151 @@ app.patch('/api/device/:mac/config', async (req, res) => {
     console.error('[ADMIN] Update error:', err.message);
     res.status(500).json({ error: 'Update failed' });
   }
+});
+
+// ─── Widget data routes ───────────────────────────────────────────────────────
+
+/**
+ * GET /api/weather?zip=10001&mode=current|3-day|7-day[&key=xxx]
+ * Proxies OpenWeather API. Uses OPENWEATHER_API_KEY env var, or ?key= param.
+ */
+app.get('/api/weather', async (req, res) => {
+  const { zip, mode = 'current', key } = req.query;
+  if (!zip) return res.status(400).json({ error: 'zip is required' });
+
+  const apiKey = OPENWEATHER_API_KEY || key;
+  if (!apiKey) return res.status(503).json({ error: 'Weather API key not configured' });
+
+  try {
+    if (mode === 'current') {
+      const url = `https://api.openweathermap.org/data/2.5/weather?zip=${encodeURIComponent(zip)},us&appid=${apiKey}&units=imperial`;
+      const r = await fetch(url);
+      if (!r.ok) return res.status(r.status).json({ error: `OpenWeather error ${r.status}` });
+      const d = await r.json();
+      return res.json({
+        mode:        'current',
+        city:        d.name,
+        temp:        Math.round(d.main.temp),
+        feels_like:  Math.round(d.main.feels_like),
+        description: d.weather[0]?.description || '',
+        icon:        d.weather[0]?.icon || '',
+        humidity:    d.main.humidity,
+        high:        Math.round(d.main.temp_max),
+        low:         Math.round(d.main.temp_min),
+      });
+    }
+
+    // 3-day or 7-day forecast (OpenWeather returns 3-hour slots)
+    const days = mode === '7-day' ? 7 : 3;
+    const url  = `https://api.openweathermap.org/data/2.5/forecast?zip=${encodeURIComponent(zip)},us&appid=${apiKey}&units=imperial&cnt=${days * 8}`;
+    const r = await fetch(url);
+    if (!r.ok) return res.status(r.status).json({ error: `OpenWeather error ${r.status}` });
+    const d = await r.json();
+
+    // Group slots by day, tracking daily high/low
+    const byDay = {};
+    for (const slot of d.list) {
+      const day = new Date(slot.dt * 1000).toLocaleDateString('en-US', { weekday: 'short' });
+      if (!byDay[day]) {
+        byDay[day] = { high: slot.main.temp_max, low: slot.main.temp_min, description: slot.weather[0]?.description || '', icon: slot.weather[0]?.icon || '' };
+      } else {
+        byDay[day].high = Math.max(byDay[day].high, slot.main.temp_max);
+        byDay[day].low  = Math.min(byDay[day].low,  slot.main.temp_min);
+      }
+    }
+
+    const forecast = Object.entries(byDay).slice(0, days).map(([date, v]) => ({
+      date,
+      high:        Math.round(v.high),
+      low:         Math.round(v.low),
+      description: v.description,
+      icon:        v.icon,
+    }));
+
+    return res.json({ mode, city: d.city.name, forecast });
+
+  } catch (err) {
+    console.error('[WEATHER] Error:', err.message);
+    res.status(500).json({ error: 'Weather unavailable' });
+  }
+});
+
+/**
+ * GET /api/lastfm?username=xxx&mode=nowplaying|recent[&key=xxx]
+ * Proxies Last.FM API. Uses LASTFM_API_KEY env var, or ?key= param.
+ */
+app.get('/api/lastfm', async (req, res) => {
+  const { username, mode = 'nowplaying', key } = req.query;
+  if (!username) return res.status(400).json({ error: 'username is required' });
+
+  const apiKey = LASTFM_API_KEY || key;
+  if (!apiKey) return res.status(503).json({ error: 'Last.FM API key not configured' });
+
+  try {
+    const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${encodeURIComponent(username)}&api_key=${apiKey}&format=json&limit=5`;
+    const r = await fetch(url);
+    if (!r.ok) return res.status(r.status).json({ error: `Last.FM error ${r.status}` });
+    const d = await r.json();
+
+    if (d.error) return res.status(400).json({ error: d.message || 'Last.FM error' });
+
+    const tracks = d.recenttracks?.track || [];
+
+    if (mode === 'nowplaying') {
+      const current   = Array.isArray(tracks) ? tracks[0] : tracks;
+      const isPlaying = current?.['@attr']?.nowplaying === 'true';
+      return res.json({
+        mode:       'nowplaying',
+        nowplaying: isPlaying,
+        artist:     current?.artist?.['#text'] || '',
+        track:      current?.name || '',
+        album:      current?.album?.['#text'] || '',
+      });
+    }
+
+    // recent — exclude the currently-playing track (has no date)
+    const recent = (Array.isArray(tracks) ? tracks : [tracks])
+      .filter(t => !t['@attr']?.nowplaying)
+      .slice(0, 5)
+      .map(t => ({
+        artist:    t.artist?.['#text'] || '',
+        track:     t.name || '',
+        played_at: t.date?.['#text'] || '',
+      }));
+
+    return res.json({ mode: 'recent', tracks: recent });
+
+  } catch (err) {
+    console.error('[LASTFM] Error:', err.message);
+    res.status(500).json({ error: 'Last.FM unavailable' });
+  }
+});
+
+/**
+ * GET /api/septa?route=42&stop=12345
+ * Stub — real SEPTA integration TBD.
+ */
+app.get('/api/septa', (req, res) => {
+  const { route = '', stop = '' } = req.query;
+  res.json({ stub: true, route, stop, arrivals: [] });
+});
+
+/**
+ * GET /api/mlb?team=NYM&mode=schedule|live
+ * Stub — real MLB integration TBD.
+ */
+app.get('/api/mlb', (req, res) => {
+  const { team = '', mode = 'schedule' } = req.query;
+  res.json({ stub: true, team, mode, games: [] });
+});
+
+/**
+ * GET /api/nfl?team=NYG&mode=schedule|live
+ * Stub — real NFL integration TBD.
+ */
+app.get('/api/nfl', (req, res) => {
+  const { team = '', mode = 'schedule' } = req.query;
+  res.json({ stub: true, team, mode, games: [] });
 });
 
 // ─── Firmware generator ───────────────────────────────────────────────────────
