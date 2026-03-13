@@ -37,7 +37,7 @@
     .header-text p  { font-size: 0.75rem; color: #555; margin-top: 2px; }
 
     .header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-    .last-refresh   { font-size: 0.72rem; color: #444; }
+
 
     .btn-ghost {
       background: none; border: 1px solid #2e2e2e; color: #777;
@@ -236,7 +236,6 @@
     <p>Device configuration</p>
   </div>
   <div class="header-actions">
-    <span class="last-refresh" id="last-refresh"></span>
     <button class="btn-ghost" onclick="loadDevices()">↻ Refresh</button>
   </div>
 </header>
@@ -430,6 +429,11 @@
     }
   }
 
+  function markDirty(el) {
+    const card = el.closest('.device-card');
+    if (card) card.querySelector('.btn-save').disabled = false;
+  }
+
   function onDrop(e) {
     e.preventDefault();
     const target = e.currentTarget;
@@ -443,6 +447,7 @@
       target.before(dragSrcRow);
     }
     renumberPages(list);
+    markDirty(target);
   }
 
   function onDragEnd(e) {
@@ -455,6 +460,7 @@
     const row  = sel.closest('.page-row');
     const type = sel.value;
     row.querySelector('.page-fields').innerHTML = pageFieldsHTML(type, {});
+    markDirty(sel);
   }
 
   function onLineChange(lineSel) {
@@ -470,10 +476,12 @@
     const list = btn.closest('.pages-list');
     btn.closest('.page-row').remove();
     renumberPages(list);
+    markDirty(list);
     updateAddBtn(list);
   }
 
   function addPage(btn) {
+    markDirty(btn);
     const list  = btn.closest('.card-body').querySelector('.pages-list');
     const count = list.querySelectorAll('.page-row').length;
     if (count >= 5) return;
@@ -607,7 +615,7 @@
 
   <div class="card-footer">
     <span class="save-msg" id="${id}-msg"></span>
-    <button class="btn-save" onclick="saveDevice('${esc(d.mac)}')">Save</button>
+    <button class="btn-save" disabled onclick="saveDevice('${esc(d.mac)}')">Save</button>
   </div>
 </div>`;
   }
@@ -638,7 +646,12 @@
       }
 
       container.innerHTML = devices.map(buildCard).join('');
-      document.getElementById('last-refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+      // Attach dirty-tracking listeners to each card
+      devices.forEach(d => {
+        const card = document.getElementById(devId(d.mac));
+        card.addEventListener('input',  () => card.querySelector('.btn-save').disabled = false);
+        card.addEventListener('change', () => card.querySelector('.btn-save').disabled = false);
+      });
 
     } catch (err) {
       document.getElementById('devices').innerHTML = `
@@ -690,17 +703,18 @@
         msg.className   = 'save-msg ok';
         msg.textContent = 'Saved ✓';
         setTimeout(() => { msg.className = 'save-msg'; }, 3000);
+        // btn stays disabled — no unsaved changes
       } else {
         const data = await res.json().catch(() => ({}));
         msg.className   = 'save-msg err';
         msg.textContent = data.error || `Error ${res.status}`;
+        btn.disabled = false;  // let user retry
       }
     } catch (err) {
       msg.className   = 'save-msg err';
       msg.textContent = 'Network error';
+      btn.disabled = false;  // let user retry
     }
-
-    btn.disabled = false;
   }
 
   function toggleAdvanced(btn) {
@@ -708,8 +722,6 @@
     btn.nextElementSibling.classList.toggle('open');
   }
 
-  // ── Auto-refresh every 30s ───────────────────────────────────────────────────
-  setInterval(loadDevices, 30_000);
   loadDevices();
 </script>
 
