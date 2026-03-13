@@ -8,7 +8,13 @@
     "dev": "node app.js",
     "test": "echo \"No tests specified\" && exit 0"
   },
-  "keywords": ["mta", "subway", "gtfs-rt", "led", "transit"],
+  "keywords": [
+    "mta",
+    "subway",
+    "gtfs-rt",
+    "led",
+    "transit"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -16,7 +22,8 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "firebase-admin": "^12.0.0",
-    "gtfs-realtime-bindings": "^1.1.1"
+    "gtfs-realtime-bindings": "^1.1.1",
+    "sharp": "^0.34.5"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -111,7 +111,8 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 |---|---|
 | `GET /api/next/:stationId` | Next MTA trains for a parent stop ID |
 | `GET /api/weather?zip=&mode=current\|3-day\|7-day[&key=]` | OpenWeather proxy |
-| `GET /api/lastfm?username=&mode=nowplaying\|recent[&key=]` | Last.FM proxy |
+| `GET /api/lastfm?username=&mode=nowplaying\|recent[&key=]` | Last.FM proxy — includes `art_url` in response |
+| `GET /api/lastfm/art?url=` | Fetch, resize to 32×32, return raw RGB565 (2048 bytes); G/B swapped for panel hardware |
 | `GET /api/septa` | Stub (returns `{ stub: true }`) |
 | `GET /api/mlb` | Stub |
 | `GET /api/nfl` | Stub |
@@ -129,10 +130,13 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 | 3 | `lastfm` | Artist (orange) / Album (gray) / Track (white) — left 32px; right 32px reserved for album art |
 
 ### Last.FM Panel Notes
-- 3-line layout: artist (orange), album (gray), track (white) — all constrained to left 32px
-- Text wider than 30px scrolls as a marquee (1px/tick at 0.1s = ~10px/s)
-- 1-second hold before scroll starts; resets on every carousel cycle
-- Right 32px of the panel is reserved for future 32×32 pixel album art
+- 3-line layout: artist (orange), album (gray), track (white) — left 32px text zone; right 32px album art
+- Text zone is exactly 32px wide; labels are fixed at x=2 and never move
+- Long text (>7 chars) scrolls via **character-windowing**: shows a 7-char window (28px) that advances 1 char every 4 ticks (~10px/s equivalent); no pixel-position movement
+- 1-second hold before scroll starts; resets on every data refresh
+- Album art: `/api/lastfm` response includes `art_url`; firmware calls `/api/lastfm/art?url=` to get a 2048-byte raw RGB565 blob (32×32); displayed as a `displayio.Bitmap` built entirely in RAM (no filesystem write)
+- **RGB565 encoding has G/B channels swapped** in `/api/lastfm/art` — the panel hardware has G and B physically swapped (see `GREEN = 0x0000FF` in firmware constants); server compensates: `((r & 0xF8) << 8) | ((b & 0xFC) << 3) | (g >> 3)`
+- SSRF guard on `/api/lastfm/art`: only allows URLs from `lastfm.freetls.fastly.net`
 - `LASTFM_API_KEY` is set as a Cloud Run env var; devices can also pass `?key=` from their Firestore config
 
 ### Firestore Schema
@@ -154,7 +158,6 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 ```
 
 ### Next Steps
-- **Album art**: Fetch album art URL from Last.FM response, server-side resize to 32×32 BMP, serve as `/api/lastfm/art?url=`, display in right 32px of lastfm panel as a `TileGrid`
 - **OPENWEATHER_API_KEY**: Set as Cloud Run env var (currently devices pass their own key)
 - **SEPTA**: Wire up real SEPTA bus API endpoint
 - **MLB / NFL**: Choose data source, wire up endpoints
@@ -166,6 +169,9 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 - `(data.get('north') or {}).get('minutes')` — null-safe fix for null GTFS trains
 - A29 doesn't exist in GTFS — was causing "14 St" to return null trains
 - `LASTFM_API_KEY` not set on Cloud Run — endpoint returned 503; fixed by setting env var
+- Last.FM text scrolled across full 64px display — replaced pixel-scroll with character-windowing (labels fixed at x=2, 7-char window slides)
+- Album art wrong colors — panel hardware has G/B channels physically swapped; fixed by swapping G/B in server RGB565 encoding
+- Album art required CIRCUITPY write (silently fails when USB-mounted) — replaced with fully in-memory `displayio.Bitmap(32, 32, 65536)` built from raw bytes
 
 ## CircuitPython Notes
 - Uses `adafruit_requests` (not `requests`) — does not support `json=` kwarg; use `json.dumps(data)` + `content_type='application/json'`

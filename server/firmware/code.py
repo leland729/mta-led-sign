@@ -160,20 +160,35 @@ class TrainDisplay:
             self._forecast_rows.append((name, high, low, cond))
         self.main_group.append(self.forecast_group)
 
-        # Panel 3: Last.FM — left 32px: artist/album/track; right 32px: reserved for album art
+        # Panel 3: Last.FM — left 32px: artist/album/track; right 32px: album art
         self.lastfm_group = displayio.Group()
         self.lastfm_group.y = MATRIX_HEIGHT * 3
+
+        # Two sub-groups for correct z-order: bg (art) rendered before fg (text)
+        self.lastfm_bg = displayio.Group()   # album art — behind text
+        self.lastfm_fg = displayio.Group()   # text labels — in front
 
         self.lastfm_artist = label.Label(font, text="", color=ORANGE, x=2, y=7)
         self.lastfm_album  = label.Label(font, text="", color=GRAY,   x=2, y=16)
         self.lastfm_track  = label.Label(font, text="", color=WHITE,  x=2, y=25)
-        self.lastfm_group.append(self.lastfm_artist)
-        self.lastfm_group.append(self.lastfm_album)
-        self.lastfm_group.append(self.lastfm_track)
+        self.lastfm_fg.append(self.lastfm_artist)
+        self.lastfm_fg.append(self.lastfm_album)
+        self.lastfm_fg.append(self.lastfm_track)
+
+        self.lastfm_group.append(self.lastfm_bg)   # art layer first
+        self.lastfm_group.append(self.lastfm_fg)   # text layer on top
+
+        # Album art state — managed by load_art()
+        self._art_tile = None
+        self._art_url  = ''    # URL of the currently-displayed art
+
         self.main_group.append(self.lastfm_group)
 
-        # Scroll state: full text strings used to compute pixel widths
-        self._lfm_texts = ['', '', '']
+        # Scroll state
+        self._lfm_texts   = ['', '', '']
+        self._lfm_hold    = 0   # ticks remaining before scroll starts
+        self._lfm_offsets = [0, 0, 0]  # char-window offset per label
+        self._lfm_tick    = 0          # sub-tick counter for advance rate
 
         # Error dot (always visible, hidden by default)
         if has_shapes:
@@ -266,33 +281,87 @@ class TrainDisplay:
             cond_lbl.text = entry.get('description', '')[:8]
 
     def update_lastfm(self, data):
-        """Update Last.FM panel (artist / album / track) and reset marquee scroll."""
-        if not data:
-            return
-        if data.get('mode') == 'nowplaying':
-            artist = data.get('artist', '')
-            album  = data.get('album',  '')
-            track  = data.get('track',  '')
-        else:  # recent
-            tracks = data.get('tracks', [])
-            artist = tracks[0].get('artist', '') if tracks else ''
-            album  = tracks[0].get('album',  '') if tracks else ''
-            track  = tracks[0].get('track',  '') if tracks else ''
+        """Update Last.FM panel (artist / album / track) and reset marquee scroll.
 
-        self._lfm_texts        = [artist, album, track]
-        self.lastfm_artist.text = artist
-        self.lastfm_album.text  = album
-        self.lastfm_track.text  = track
-        # Reset scroll to start position on every data refresh
-        self.lastfm_artist.x = 2
-        self.lastfm_album.x  = 2
-        self.lastfm_track.x  = 2
+        Returns the art_url for the current track so the caller can fetch and
+        display album art separately (network fetch happens outside this method).
+        """
+        if not data:
+            return ''
+        if data.get('mode') == 'nowplaying':
+            artist  = data.get('artist',  '')
+            album   = data.get('album',   '')
+            track   = data.get('track',   '')
+            art_url = data.get('art_url', '')
+        else:  # recent
+            tracks  = data.get('tracks', [])
+            t0      = tracks[0] if tracks else {}
+            artist  = t0.get('artist',  '')
+            album   = t0.get('album',   '')
+            track   = t0.get('track',   '')
+            art_url = t0.get('art_url', '')
+
+        self._lfm_texts         = [artist, album, track]
+        self._lfm_offsets       = [0, 0, 0]
+        self._lfm_tick          = 0
+        self.lastfm_artist.text = artist[:7]
+        self.lastfm_album.text  = album[:7]
+        self.lastfm_track.text  = track[:7]
+        self.lastfm_artist.x    = 2
+        self.lastfm_album.x     = 2
+        self.lastfm_track.x     = 2
+        self._lfm_hold          = 10   # 10 ticks × 0.1s = 1 second pause
+        return art_url
+
+    def load_art(self, art_url, raw_bytes):
+        """Build a 32×32 TileGrid in memory from raw RGB565 bytes and show at x=32.
+
+        raw_bytes: 2048-byte buffer of RGB565 big-endian pixels (top-down, row-major)
+                   returned by /api/lastfm/art. Pass None to clear without displaying.
+
+        Skips rebuild if art_url matches what is already displayed.
+        Removes the existing TileGrid before adding the new one.
+        """
+        if art_url == self._art_url:
+            return   # already showing this art (same track)
+
+        # Remove old TileGrid from the bg layer
+        if self._art_tile is not None:
+            try:
+                self.lastfm_bg.remove(self._art_tile)
+            except Exception:
+                pass
+            self._art_tile = None
+
+        self._art_url = art_url
+
+        if not raw_bytes or not art_url:
+            return   # no art — leave right side blank
+
+        # Build a full-color Bitmap directly in RAM from RGB565 bytes.
+        # value_count=65536 → 16-bit indices (2 bytes/pixel), no filesystem needed.
+        try:
+            bm = displayio.Bitmap(32, 32, 65536)
+            for i in range(32 * 32):
+                bm[i % 32, i // 32] = (raw_bytes[i * 2] << 8) | raw_bytes[i * 2 + 1]
+            converter = displayio.ColorConverter(
+                input_colorspace=displayio.Colorspace.RGB565)
+            tile = displayio.TileGrid(bm, pixel_shader=converter, x=32, y=0)
+            self.lastfm_bg.append(tile)
+            self._art_tile = tile
+            print("Art: displayed in memory")
+        except Exception as e:
+            print(f"Art: load failed — {e}")
 
     def update_page(self, page, data):
-        """Dispatch to the right update method and scroll to the right panel."""
+        """Dispatch to the right update method and scroll to the right panel.
+
+        Returns art_url (str) when the page is lastfm and has album art to fetch,
+        otherwise returns ''.
+        """
         if not data or data.get('error'):
             self.show_error(True)
-            return
+            return ''
         self.show_error(False)
         ptype = page.get('type', 'mta')
         if ptype == 'mta':
@@ -307,8 +376,10 @@ class TrainDisplay:
                 self.update_forecast(data)
                 self.scroll_to_view('forecast')
         elif ptype == 'lastfm':
-            self.update_lastfm(data)
+            art_url = self.update_lastfm(data)
             self.scroll_to_view('lastfm')
+            return art_url
+        return ''
 
     # ── Scroll animation ──────────────────────────────────────────────────────
 
@@ -335,23 +406,33 @@ class TrainDisplay:
         self.current_view = view_name
 
     def tick_lastfm_scroll(self):
-        """Advance marquee scroll for Last.FM text labels (left 32px zone).
+        """Advance character-window marquee for Last.FM labels (left 32px zone).
 
-        tom-thumb is 4px/char. Text wider than 30px scrolls left one pixel
-        per call; when fully off-screen it wraps back in from the right edge.
+        Shows up to 7 characters at a time (7×4px = 28px ≤ 30px zone).
+        Window advances 1 char every 4 ticks (0.4s); labels stay at x=2 always.
         """
-        CHAR_W = 4  # tom-thumb: 4 pixels per character
+        if self._lfm_hold > 0:
+            self._lfm_hold -= 1
+            return
+
+        self._lfm_tick += 1
+        advance = (self._lfm_tick % 4) == 0
+
         labels = [self.lastfm_artist, self.lastfm_album, self.lastfm_track]
-        for lbl, text in zip(labels, self._lfm_texts):
-            if not text:
+        wraps  = 0
+        for i, (lbl, text) in enumerate(zip(labels, self._lfm_texts)):
+            lbl.x = 2
+            if not text or len(text) <= 7:
+                lbl.text = text
                 continue
-            text_w = len(text) * CHAR_W
-            if text_w <= 30:
-                lbl.x = 2       # fits — keep static
-                continue
-            lbl.x -= 1
-            if lbl.x < -text_w:
-                lbl.x = 32      # fully off left; re-enter from right edge
+            lbl.text = text[self._lfm_offsets[i]:self._lfm_offsets[i] + 7]
+            if advance:
+                self._lfm_offsets[i] += 1
+                if self._lfm_offsets[i] > len(text) - 7:
+                    self._lfm_offsets[i] = 0
+                    wraps += 1
+        if wraps:
+            self._lfm_hold = 10   # 1s pause before restarting after wrap
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -458,6 +539,29 @@ class NetworkManager:
 
         return None
 
+    def fetch_art(self, art_url):
+        """Fetch 32×32 RGB565 pixels from /api/lastfm/art?url=<art_url>.
+
+        Returns 2048 bytes (raw RGB565 big-endian, top-down) on success, else None.
+        No filesystem write — caller passes bytes directly to display.load_art().
+        """
+        if not self.connected or not self.requests:
+            return None
+        try:
+            url = f"{SERVER_URL}/api/lastfm/art?url={art_url}"
+            print(f"Art fetch: {url[:60]}...")
+            resp = self.requests.get(url, timeout=15)
+            if resp.status_code == 200:
+                raw = resp.content
+                resp.close()
+                gc.collect()
+                return raw
+            print(f"Art: HTTP {resp.status_code}")
+            resp.close()
+        except Exception as e:
+            print(f"Art fetch error: {e}")
+        return None
+
     def register_and_fetch_config(self):
         """Register with server and return Firestore config dict."""
         if not self.connected or not self.requests:
@@ -536,9 +640,11 @@ if connected:
     time.sleep(1)
 
     # Fetch and display the first page
-    first = CAROUSEL[0]
-    data  = network.fetch_page_data(first)
-    display.update_page(first, data)
+    first   = CAROUSEL[0]
+    data    = network.fetch_page_data(first)
+    art_url = display.update_page(first, data)
+    if art_url:
+        display.load_art(art_url, network.fetch_art(art_url))
     display.hide_splash()
 
 else:
@@ -576,10 +682,14 @@ while True:
     # Advance carousel
     if current_time - last_view_cycle >= VIEW_CYCLE_INTERVAL:
         carousel_index = (carousel_index + 1) % len(CAROUSEL)
-        page  = CAROUSEL[carousel_index]
+        page    = CAROUSEL[carousel_index]
         print(f"\nCarousel → {carousel_index + 1}/{len(CAROUSEL)}: {page.get('type')}")
-        data  = network.fetch_page_data(page)
-        display.update_page(page, data)
+        data    = network.fetch_page_data(page)
+        art_url = display.update_page(page, data)
+        if art_url:
+            display.load_art(art_url, network.fetch_art(art_url))
+        else:
+            display.load_art('', None)   # clear art when not on a lastfm page
         last_view_cycle = current_time
         gc.collect()
 

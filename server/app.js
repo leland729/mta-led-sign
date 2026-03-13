@@ -27,6 +27,7 @@ const cors    = require('cors');
 const path    = require('path');
 const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
 const admin   = require('firebase-admin');
+const sharp   = require('sharp');
 require('dotenv').config();
 
 const { STATIONS, LINE_CONFIGS } = require('./data/mta-stations');
@@ -436,6 +437,22 @@ app.get('/api/lastfm', async (req, res) => {
 
     const tracks = d.recenttracks?.track || [];
 
+    // Extract the best available album art URL from a track object.
+    // Last.FM returns an `image` array: [small, medium, large, extralarge, mega].
+    // We prefer 'large' (174×174) for quality when downscaling to 32×32.
+    // Returns '' if all images are missing or are the Last.FM placeholder.
+    function getArtUrl(track) {
+      const images = track?.image || [];
+      const SIZES  = ['large', 'extralarge', 'mega', 'medium', 'small'];
+      for (const size of SIZES) {
+        const img = images.find(i => i.size === size);
+        const url = img?.['#text'] || '';
+        // Last.FM returns a specific "no image" path when art is unavailable
+        if (url && !url.includes('2a96cbd8b46e442fc41c2b86b821562f')) return url;
+      }
+      return '';
+    }
+
     if (mode === 'nowplaying') {
       const current   = Array.isArray(tracks) ? tracks[0] : tracks;
       const isPlaying = current?.['@attr']?.nowplaying === 'true';
@@ -445,6 +462,7 @@ app.get('/api/lastfm', async (req, res) => {
         artist:     current?.artist?.['#text'] || '',
         track:      current?.name || '',
         album:      current?.album?.['#text'] || '',
+        art_url:    getArtUrl(current),
       });
     }
 
@@ -457,6 +475,7 @@ app.get('/api/lastfm', async (req, res) => {
         track:     t.name || '',
         album:     t.album?.['#text'] || '',
         played_at: t.date?.['#text'] || '',
+        art_url:   getArtUrl(t),
       }));
 
     return res.json({ mode: 'recent', tracks: recent });
@@ -464,6 +483,75 @@ app.get('/api/lastfm', async (req, res) => {
   } catch (err) {
     console.error('[LASTFM] Error:', err.message);
     res.status(500).json({ error: 'Last.FM unavailable' });
+  }
+});
+
+/**
+ * GET /api/lastfm/art?url=<last.fm-image-url>
+ *
+ * Fetches a Last.FM album art image and returns it resized to 32×32 as an
+ * uncompressed 24-bit BMP, ready for CircuitPython's displayio.OnDiskBitmap.
+ *
+ * The device saves this file to /art.bmp on CIRCUITPY and displays it in the
+ * right 32px of the Last.FM panel as a TileGrid.
+ *
+ * Cache-Control: 1 hour — album art rarely changes mid-listen.
+ */
+app.get('/api/lastfm/art', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'url is required' });
+
+  // Only allow Last.FM image CDN URLs to prevent SSRF
+  const ALLOWED_HOST = 'lastfm.freetls.fastly.net';
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+  if (parsed.hostname !== ALLOWED_HOST) {
+    return res.status(400).json({ error: 'URL must be a Last.FM image' });
+  }
+
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return res.status(r.status).json({ error: `Upstream error ${r.status}` });
+
+    const buffer = Buffer.from(await r.arrayBuffer());
+
+    // Resize to 32×32 and output raw RGB bytes (top-down, R G B order).
+    // The device will build a displayio.Bitmap in memory — no filesystem write needed.
+    const rgb = await sharp(buffer)
+      .resize(32, 32, { fit: 'cover', position: 'centre' })
+      .raw()
+      .toBuffer();
+
+    // Pack as RGB565 big-endian (2 bytes/pixel × 1024 pixels = 2048 bytes).
+    // Big-endian makes parsing trivial in CircuitPython: (b[0] << 8) | b[1].
+    //
+    // This display's RGB matrix has G and B channels physically swapped relative
+    // to what displayio expects (hence GREEN = 0x0000FF in firmware constants).
+    // The ColorConverter outputs standard (R, G, B); hardware renders (R, B, G).
+    // Compensate by encoding with G and B swapped so the visual result is correct.
+    const W = 32, H = 32;
+    const out = Buffer.alloc(W * H * 2);
+    for (let i = 0; i < W * H; i++) {
+      const r = rgb[i * 3];
+      const g = rgb[i * 3 + 1];
+      const b = rgb[i * 3 + 2];
+      // Swap g↔b: put B in the 6-bit G field, G in the 5-bit B field
+      const val = ((r & 0xF8) << 8) | ((b & 0xFC) << 3) | (g >> 3);
+      out[i * 2]     = (val >> 8) & 0xFF;
+      out[i * 2 + 1] = val & 0xFF;
+    }
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(out);
+    console.log(`[ART] Served 32×32 RGB565 for ${parsed.pathname} (${out.length} bytes)`);
+  } catch (err) {
+    console.error('[ART] Error:', err.message);
+    res.status(500).json({ error: 'Could not fetch album art' });
   }
 });
 
