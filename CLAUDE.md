@@ -94,7 +94,7 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 | NYC MTA | Line, Station | MTA GTFS-RT | ✅ Live |
 | Weather | Zip code, Mode (current / 3-day / 7-day) | OpenWeather API | ✅ Live |
 | Last.FM | Username, Mode (now playing / recent) | Last.FM API | ✅ Live |
-| SEPTA | Route, Stop | SEPTA API | 🔲 Stub only |
+| SEPTA | Route, Stop ID | SEPTA GTFS-RT | ✅ Live |
 | MLB | Team, Mode (schedule / live score) | TBD | 🔲 Stub only |
 | NFL | Team, Mode (schedule / live score) | TBD | 🔲 Stub only |
 
@@ -105,7 +105,7 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 | `GET /api/weather?zip=&mode=current\|3-day\|7-day[&key=]` | OpenWeather proxy |
 | `GET /api/lastfm?username=&mode=nowplaying\|recent[&key=]` | Last.FM proxy — includes `art_url` in response |
 | `GET /api/lastfm/art?url=` | Fetch, resize to 32×32, return raw RGB565 (2048 bytes); G/B swapped for panel hardware |
-| `GET /api/septa` | Stub (returns `{ stub: true }`) |
+| `GET /api/septa?route=&stop_id=[&results=2]` | Real-time bus arrivals via SEPTA GTFS-RT TripUpdates (no API key) |
 | `GET /api/mlb` | Stub |
 | `GET /api/nfl` | Stub |
 | `GET /api/device/:mac/config` | Firestore config for device |
@@ -113,13 +113,22 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 | `PATCH /api/device/:mac` | Update device config fields |
 | `GET /firmware/:mac` | Generate and download `code.py` for device |
 
-### Firmware Display Panels (4-panel vertical carousel)
+### Firmware Display Panels (5-panel vertical carousel)
 | Index | View name | Content |
 |---|---|---|
 | 0 | `subway` | Station name (top, orange) + North + South next trains |
 | 1 | `weather` | Current temp, condition, H/L |
 | 2 | `forecast` | 3-row day/high/low/condition |
 | 3 | `lastfm` | Artist (orange) / Album (gray) / Track (white) — left 32px; right 32px reserved for album art |
+| 4 | `septa` | SEPTA logo (left 22px) + route header + next 2 arrival times |
+
+### SEPTA Panel Notes
+- Feed: `https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb` — same protobuf format as MTA, no API key required
+- Stop IDs are already directional (each pole is a unique stop ID — no N/S suffix needed)
+- Config fields: `route` (e.g., `"48"`) and `stop_id` (e.g., `"5372"`)
+- Layout: pixel-art SEPTA logo in left 22px column; route + next 2 ETAs in right 42px
+- `SEPTA_BLUE = 0x00B56A` (standard `#006AB5` with G/B swap for panel hardware)
+- Long objects from `gtfs-realtime-bindings` handled: `typeof time === 'object' ? time.low : time`
 
 ### Subway Panel Layout (32px tall, 64px wide)
 ```
@@ -191,7 +200,7 @@ Max 8 chars. All lines:
 ```
 
 ### Next Steps
-- **SEPTA**: Wire up real SEPTA bus API endpoint
+- **SEPTA logo**: Replace pixel-art S placeholder with actual SEPTA interlocking-arrows logo (blue/red/white in the 22×32 left column)
 - **MLB / NFL**: Choose data source, wire up endpoints
 
 ### Known Issues / Backlog
@@ -216,6 +225,7 @@ Max 8 chars. All lines:
 - Subway panel showed no station name — added station name row at top (y=6, orange, from API)
 - Circle color defaulted to WHITE when no train data — now falls back to dim gray (`0x444444`)
 - L train circle too light (gray-on-gray illegible) — darkened to `0x5A5A5A`
+- SEPTA `/api/septa` was a stub — replaced with real GTFS-RT TripUpdates handler using `gtfs-realtime-bindings`; 5th panel added to firmware carousel; `scroll_to_view()` had hardcoded `range(4)` preventing the SEPTA panel from rendering (fixed to `range(len(groups))`)
 
 ## CircuitPython Notes
 - Uses `adafruit_requests` (not `requests`) — does not support `json=` kwarg; use `json.dumps(data)` + `content_type='application/json'`

@@ -17,6 +17,7 @@ from adafruit_bitmap_font import bitmap_font
 
 try:
     from adafruit_display_shapes.circle import Circle
+    from adafruit_display_shapes.rect import Rect
     has_shapes = True
 except ImportError:
     has_shapes = False
@@ -31,18 +32,19 @@ UPDATE_INTERVAL = 30   # seconds — background refresh for the current MTA page
 MAX_RETRIES     = 3
 RETRY_DELAY     = 5    # seconds between WiFi retries
 
-# View index for the 4-panel vertical carousel
-VIEW_INDEX = {'subway': 0, 'weather': 1, 'forecast': 2, 'lastfm': 3}
+# View index for the 5-panel vertical carousel
+VIEW_INDEX = {'subway': 0, 'weather': 1, 'forecast': 2, 'lastfm': 3, 'septa': 4}
 
 # ── Colors ────────────────────────────────────────────────────────────────────
-BLACK    = 0x000000
-WHITE    = 0xFFFFFF
-GRAY     = 0x444444
-GREEN    = 0x0000FF
-ORANGE   = 0xFF00AA
-YELLOW   = 0xFF00AA
-RED      = 0xEE352E
-MTA_BLUE = 0x39A600
+BLACK     = 0x000000
+WHITE     = 0xFFFFFF
+GRAY      = 0x444444
+GREEN     = 0x0000FF
+ORANGE    = 0xFF00AA
+YELLOW    = 0xFF00AA
+RED       = 0xEE352E
+MTA_BLUE  = 0x39A600
+SEPTA_BLUE = 0x00B56A  # SEPTA brand blue #006AB5, G/B swapped for panel
 
 # MTA line colors — G/B channels swapped to match panel hardware wiring.
 # Formula: standard #RRGGBB → stored as #RRBBGG so panel displays correctly.
@@ -93,7 +95,7 @@ except (OSError, RuntimeError):
 
 # ─────────────────────────────────────────────────────────────────────────────
 class TrainDisplay:
-    """Manages the 4-panel LED matrix carousel: subway / weather / forecast / lastfm"""
+    """Manages the 5-panel LED matrix carousel: subway / weather / forecast / lastfm / septa"""
 
     def __init__(self):
         self.main_group = displayio.Group()
@@ -207,6 +209,35 @@ class TrainDisplay:
         self._art_url  = ''    # URL of the currently-displayed art
 
         self.main_group.append(self.lastfm_group)
+
+        # Panel 4: SEPTA bus arrivals (y=MATRIX_HEIGHT*4 initially)
+        # Layout: SEPTA logo left 22px (blue bg + pixel S) | text starts x=23
+        # Text rows: route header y=6 | next arrival y=16 | second arrival y=26
+        self.septa_group = displayio.Group()
+        self.septa_group.y = MATRIX_HEIGHT * 4
+
+        if has_shapes:
+            # Blue background column for logo area
+            self.septa_group.append(Rect(0, 0, 22, 32, fill=SEPTA_BLUE))
+            # Pixel-art S in white + red middle (each stroke is 3px thick, 2×2 blocks)
+            # Drawing order matters: later shapes render on top
+            self.septa_group.append(Rect(2,  2, 16, 3, fill=WHITE))   # top bar
+            self.septa_group.append(Rect(2,  2,  3, 9, fill=WHITE))   # left arm
+            self.septa_group.append(Rect(2, 10, 16, 3, fill=RED))     # middle bar (red)
+            self.septa_group.append(Rect(17, 10,  3, 9, fill=WHITE))  # right arm
+            self.septa_group.append(Rect(2, 17, 16, 3, fill=WHITE))   # bottom bar
+
+        self.septa_header    = label.Label(font, text="Rt --", color=ORANGE, x=23, y=6)
+        self.septa_next_lbl  = label.Label(font, text="N:",    color=WHITE,  x=23, y=16)
+        self.septa_time1     = label.Label(font, text="--",    color=GRAY,   x=33, y=16)
+        self.septa_then_lbl  = label.Label(font, text="T:",    color=WHITE,  x=23, y=26)
+        self.septa_time2     = label.Label(font, text="--",    color=GRAY,   x=33, y=26)
+        self.septa_group.append(self.septa_header)
+        self.septa_group.append(self.septa_next_lbl)
+        self.septa_group.append(self.septa_time1)
+        self.septa_group.append(self.septa_then_lbl)
+        self.septa_group.append(self.septa_time2)
+        self.main_group.append(self.septa_group)
 
         # Scroll state
         self._lfm_texts   = ['', '', '']
@@ -350,6 +381,35 @@ class TrainDisplay:
         self._lfm_hold          = 10   # 10 ticks × 0.1s = 1 second pause
         return art_url if show_art else ''
 
+    def update_septa(self, data):
+        """Update SEPTA bus panel from /api/septa response.
+
+        Shows route in the header and next two arrival times.
+        Minutes == 0 displays 'Now' in yellow; no data shows '--' in gray.
+        """
+        if not data:
+            return
+        route    = data.get('route', '--')
+        arrivals = data.get('arrivals', [])
+        self.septa_header.text = f"Rt {route}"[:13]
+
+        time_labels = [self.septa_time1, self.septa_time2]
+        for i, lbl in enumerate(time_labels):
+            if i < len(arrivals):
+                mins = arrivals[i].get('minutes')
+                if mins is None:
+                    lbl.text  = '--'
+                    lbl.color = GRAY
+                elif mins == 0:
+                    lbl.text  = 'Now'
+                    lbl.color = YELLOW
+                else:
+                    lbl.text  = f"{mins}m"
+                    lbl.color = ORANGE
+            else:
+                lbl.text  = '--'
+                lbl.color = GRAY
+
     def load_art(self, art_url, raw_bytes):
         """Build a 32×32 TileGrid in memory from raw RGB565 bytes and show at x=32.
 
@@ -419,6 +479,9 @@ class TrainDisplay:
                 self.load_art('', None)   # clear any previously displayed art
             self.scroll_to_view('lastfm')
             return art_url
+        elif ptype == 'septa':
+            self.update_septa(data)
+            self.scroll_to_view('septa')
         return ''
 
     # ── Scroll animation ──────────────────────────────────────────────────────
@@ -428,20 +491,20 @@ class TrainDisplay:
         if self.current_view == view_name:
             return
         target_idx = VIEW_INDEX.get(view_name, 0)
-        groups = [self.subway_group, self.weather_group, self.forecast_group, self.lastfm_group]
+        groups = [self.subway_group, self.weather_group, self.forecast_group, self.lastfm_group, self.septa_group]
         # Target y for each group: (group_index - target_index) * panel height
-        final = [(i - target_idx) * MATRIX_HEIGHT for i in range(4)]
+        final = [(i - target_idx) * MATRIX_HEIGHT for i in range(len(groups))]
 
         frames = 8
         for frame in range(frames + 1):
             t = frame / frames
-            for j in range(4):
+            for j in range(len(groups)):
                 grp = groups[j]
                 grp.y = int(grp.y + (final[j] - grp.y) * t)
             time.sleep(0.08)
 
         # Snap to exact positions
-        for j in range(4):
+        for j in range(len(groups)):
             groups[j].y = final[j]
         self.current_view = view_name
 
@@ -552,6 +615,11 @@ class NetworkManager:
                 url  = f"{SERVER_URL}/api/lastfm?username={user}&mode={mode}"
                 if CFG.get('lastfm_api_key'):
                     url += f"&key={CFG['lastfm_api_key']}"
+
+            elif ptype == 'septa':
+                route   = page.get('route', '')
+                stop_id = page.get('stop_id', '')
+                url     = f"{SERVER_URL}/api/septa?route={route}&stop_id={stop_id}&results=2"
 
             else:
                 print(f"Unsupported page type: {ptype}")
@@ -668,9 +736,9 @@ if connected:
         BRIGHTNESS                 = config.get('brightness',           BRIGHTNESS)
         matrixportal.display.brightness = BRIGHTNESS
 
-        # Build carousel from pages array; supported types: mta, weather, lastfm
+        # Build carousel from pages array; supported types: mta, weather, lastfm, septa
         raw_pages = config.get('pages', [])
-        CAROUSEL  = [p for p in raw_pages if p.get('type') in ('mta', 'weather', 'lastfm')]
+        CAROUSEL  = [p for p in raw_pages if p.get('type') in ('mta', 'weather', 'lastfm', 'septa')]
         if not CAROUSEL:
             CAROUSEL = [{'type': 'mta', 'station_id': CFG['station_id']}]
 

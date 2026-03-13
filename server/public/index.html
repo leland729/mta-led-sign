@@ -391,8 +391,7 @@
       case 'septa': {
         return `
           <input type="text" class="f-route" placeholder="Route" value="${esc(data.route || '')}">
-          <input type="text" class="f-stop"  placeholder="Stop ID" value="${esc(data.stop_id || '')}">
-          <span class="stub-tag">coming soon</span>`;
+          <input type="text" class="f-stop"  placeholder="Stop ID" value="${esc(data.stop_id || '')}">`;
       }
       default:
         return '';

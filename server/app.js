@@ -556,12 +556,69 @@ app.get('/api/lastfm/art', async (req, res) => {
 });
 
 /**
- * GET /api/septa?route=42&stop=12345
- * Stub — real SEPTA integration TBD.
+ * GET /api/septa?route=48&stop_id=5372&results=2
+ * Real-time bus arrivals via SEPTA GTFS-RT TripUpdates feed (no API key required).
  */
-app.get('/api/septa', (req, res) => {
-  const { route = '', stop = '' } = req.query;
-  res.json({ stub: true, route, stop, arrivals: [] });
+const SEPTA_GTFS_RT = 'https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb';
+
+app.get('/api/septa', async (req, res) => {
+  const { route = '', stop_id = '', results = '2' } = req.query;
+  if (!route || !stop_id) return res.status(400).json({ error: 'route and stop_id required' });
+
+  const cacheKey = `septa:${route}:${stop_id}`;
+
+  try {
+    console.log(`[SEPTA] Fetching TripUpdates for route=${route} stop=${stop_id}`);
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 10000);
+
+    let feed;
+    try {
+      const response = await fetch(SEPTA_GTFS_RT, { signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buffer);
+      console.log(`[SEPTA] Got ${feed.entity?.length || 0} entities`);
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const now      = Math.floor(Date.now() / 1000);
+    const arrivals = [];
+
+    for (const entity of feed.entity || []) {
+      if (!entity.tripUpdate) continue;
+      if (entity.tripUpdate.trip.routeId !== route) continue;
+
+      for (const stop of entity.tripUpdate.stopTimeUpdate || []) {
+        if (stop.stopId !== stop_id) continue;
+
+        const raw  = stop.arrival?.time ?? stop.departure?.time;
+        if (!raw) continue;
+        // gtfs-realtime-bindings returns Long objects for int64 fields
+        const secs = (typeof raw === 'object') ? raw.low : raw;
+        if (secs <= now) continue;
+
+        arrivals.push({ minutes: Math.max(0, Math.round((secs - now) / 60)) });
+        break; // one match per trip
+      }
+    }
+
+    arrivals.sort((a, b) => a.minutes - b.minutes);
+    const limit = Math.max(1, parseInt(results, 10) || 2);
+    const data  = { route, stop_id, arrivals: arrivals.slice(0, limit) };
+    lastGoodData[cacheKey] = data;
+    console.log(`[SEPTA] route=${route} stop=${stop_id}: ${arrivals.length} arrivals found`);
+    return res.json(data);
+
+  } catch (err) {
+    console.error('[SEPTA] Error:', err.message);
+    if (lastGoodData[cacheKey]) {
+      console.log('[SEPTA] Returning cached data');
+      return res.json(lastGoodData[cacheKey]);
+    }
+    return res.status(502).json({ error: 'SEPTA feed unavailable', detail: err.message });
+  }
 });
 
 /**
