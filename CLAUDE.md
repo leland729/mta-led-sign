@@ -39,8 +39,10 @@ A real-time NYC subway departure board built on an Adafruit MatrixPortal S3 (ESP
 
 **Environment variables set on Cloud Run:**
 - `MTA_API_KEY` — MTA GTFS-RT API key
-- `LASTFM_API_KEY` — Last.FM API key (set 2026-03-13)
-- `OPENWEATHER_API_KEY` — not yet set; devices pass their own key via `?key=` param
+- `LASTFM_API_KEY` — Last.FM API key
+- `OPENWEATHER_API_KEY` — OpenWeather API key
+
+**⚠️ Always use `--update-env-vars` (not `--set-env-vars`) when adding/changing a single key — `--set-env-vars` replaces ALL env vars and will wipe the others.**
 
 **Device firmware:** Download from Admin UI (Advanced → Download Firmware) and copy `code.py` to the `CIRCUITPY` drive via USB.
 
