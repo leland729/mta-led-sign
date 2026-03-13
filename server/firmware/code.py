@@ -44,7 +44,8 @@ ORANGE    = 0xFF00AA
 YELLOW    = 0xFF00AA
 RED       = 0xEE352E
 MTA_BLUE  = 0x39A600
-SEPTA_BLUE = 0x00B56A  # SEPTA brand blue #006AB5, G/B swapped for panel
+SEPTA_BLUE = 0x1FA34F  # SEPTA brand blue #1F4FA3, G/B swapped for panel
+SEPTA_RED  = 0xF12847  # SEPTA brand red  #F14728, G/B swapped for panel
 
 # MTA line colors — G/B channels swapped to match panel hardware wiring.
 # Formula: standard #RRGGBB → stored as #RRBBGG so panel displays correctly.
@@ -217,15 +218,54 @@ class TrainDisplay:
         self.septa_group.y = MATRIX_HEIGHT * 4
 
         if has_shapes:
-            # Blue background column for logo area
-            self.septa_group.append(Rect(0, 0, 22, 32, fill=SEPTA_BLUE))
-            # Pixel-art S in white + red middle (each stroke is 3px thick, 2×2 blocks)
-            # Drawing order matters: later shapes render on top
-            self.septa_group.append(Rect(2,  2, 16, 3, fill=WHITE))   # top bar
-            self.septa_group.append(Rect(2,  2,  3, 9, fill=WHITE))   # left arm
-            self.septa_group.append(Rect(2, 10, 16, 3, fill=RED))     # middle bar (red)
-            self.septa_group.append(Rect(17, 10,  3, 9, fill=WHITE))  # right arm
-            self.septa_group.append(Rect(2, 17, 16, 3, fill=WHITE))   # bottom bar
+            # SEPTA interlocking-arrows logo, pixel art derived from official logo image.
+            # White background + blue arrow (↗) + red arrow (↙), G/B swapped for panel.
+            self.septa_group.append(Rect( 0, 0, 22,32, fill=WHITE))
+            for r in [
+                Rect( 3, 4, 5, 1, fill=SEPTA_BLUE),
+                Rect( 2, 5, 5, 2, fill=SEPTA_BLUE),
+                Rect( 0, 7, 6, 2, fill=SEPTA_BLUE),
+                Rect( 1, 9, 4, 1, fill=SEPTA_BLUE),
+                Rect( 0,10, 4, 2, fill=SEPTA_BLUE),
+                Rect( 0,12, 3, 1, fill=SEPTA_BLUE),
+                Rect( 0,13, 4, 1, fill=SEPTA_BLUE),
+                Rect( 1,14, 4, 1, fill=SEPTA_BLUE),
+                Rect( 0,15, 6, 3, fill=SEPTA_BLUE),
+                Rect( 0,18, 7, 1, fill=SEPTA_BLUE),
+                Rect( 0,19, 8, 1, fill=SEPTA_BLUE),
+                Rect( 0,20,14, 3, fill=SEPTA_BLUE),
+                Rect( 0,23,12, 1, fill=SEPTA_BLUE),
+                Rect( 0,24,11, 1, fill=SEPTA_BLUE),
+                Rect( 0,25,10, 1, fill=SEPTA_BLUE),
+                Rect( 2,26, 7, 2, fill=SEPTA_BLUE),
+                Rect( 2,28, 6, 1, fill=SEPTA_BLUE),
+                Rect(14, 4, 6, 1, fill=SEPTA_RED),
+                Rect(14, 5, 7, 2, fill=SEPTA_RED),
+                Rect(12, 7, 9, 1, fill=SEPTA_RED),
+                Rect(11, 8,10, 2, fill=SEPTA_RED),
+                Rect( 9,10,12, 3, fill=SEPTA_RED),
+                Rect( 9,13, 1, 1, fill=SEPTA_RED),
+                Rect(15,13, 6, 1, fill=SEPTA_RED),
+                Rect( 9,14, 2, 1, fill=SEPTA_RED),
+                Rect(16,14, 5, 1, fill=SEPTA_RED),
+                Rect(10,15, 1, 1, fill=SEPTA_RED),
+                Rect(17,15, 4, 1, fill=SEPTA_RED),
+                Rect(11,16, 1, 1, fill=SEPTA_RED),
+                Rect(17,16, 4, 1, fill=SEPTA_RED),
+                Rect(11,17, 1, 1, fill=SEPTA_RED),
+                Rect(17,17, 4, 1, fill=SEPTA_RED),
+                Rect(11,18, 2, 1, fill=SEPTA_RED),
+                Rect(18,18, 3, 1, fill=SEPTA_RED),
+                Rect(12,19, 2, 1, fill=SEPTA_RED),
+                Rect(19,19, 2, 2, fill=SEPTA_RED),
+                Rect(18,21, 4, 2, fill=SEPTA_RED),
+                Rect(17,23, 5, 1, fill=SEPTA_RED),
+                Rect(17,24, 4, 1, fill=SEPTA_RED),
+                Rect(16,25, 5, 1, fill=SEPTA_RED),
+                Rect(15,26, 6, 2, fill=SEPTA_RED),
+                Rect(15,28, 5, 1, fill=SEPTA_RED),
+            ]:
+                self.septa_group.append(r)
 
         self.septa_header    = label.Label(font, text="Rt --", color=ORANGE, x=23, y=6)
         self.septa_next_lbl  = label.Label(font, text="N:",    color=WHITE,  x=23, y=16)

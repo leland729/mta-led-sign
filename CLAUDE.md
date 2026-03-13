@@ -127,7 +127,8 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 - Stop IDs are already directional (each pole is a unique stop ID — no N/S suffix needed)
 - Config fields: `route` (e.g., `"48"`) and `stop_id` (e.g., `"5372"`)
 - Layout: pixel-art SEPTA logo in left 22px column; route + next 2 ETAs in right 42px
-- `SEPTA_BLUE = 0x00B56A` (standard `#006AB5` with G/B swap for panel hardware)
+- `SEPTA_BLUE = 0x1FA34F` (brand blue `#1F4FA3` with G/B swap); `SEPTA_RED = 0xF12847` (brand red `#F14728` with G/B swap)
+- Logo is pixel art derived from the official logo image (`images/septa_logo_preview.png`, 30×26 → scaled to 22×32)
 - Long objects from `gtfs-realtime-bindings` handled: `typeof time === 'object' ? time.low : time`
 
 ### Subway Panel Layout (32px tall, 64px wide)
@@ -200,7 +201,6 @@ Max 8 chars. All lines:
 ```
 
 ### Next Steps
-- **SEPTA logo**: Replace pixel-art S placeholder with actual SEPTA interlocking-arrows logo (blue/red/white in the 22×32 left column)
 - **MLB / NFL**: Choose data source, wire up endpoints
 
 ### Known Issues / Backlog
