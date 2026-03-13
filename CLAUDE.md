@@ -205,6 +205,7 @@ Max 8 chars. All lines:
 - **MLB / NFL**: Choose data source, wire up endpoints
 
 ### Known Issues / Backlog
+- **SEPTA logo colors**: BMP loaded via `OnDiskBitmap` uses raw file colors; panel hardware swaps G/B on output. `septa_11x16_panel.bmp` (G/B pre-swapped) must be copied to CIRCUITPY as `septa_11x16.bmp` — easy to get wrong. Consider embedding the logo in firmware (Bitmap + palette) to eliminate the extra file dependency.
 - **Weather panel — icon**: Current weather should show a weather icon alongside temp/condition
 - **Weather panel — location**: Show city/state/zip on the current weather screen
 - **7-day forecast**: Only 3 days display; not enough real estate for 7 days — needs either a condensed layout (heavily abbreviated) or a design decision to cap at 3-day
