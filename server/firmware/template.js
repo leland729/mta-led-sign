@@ -3,7 +3,7 @@
 const fs   = require('fs');
 const path = require('path');
 
-const TEMPLATE_PATH = path.join(__dirname, '../../circuitpy/code.py');
+const TEMPLATE_PATH = path.join(__dirname, 'code.py');
 
 /**
  * generateFirmware(config, mac, serviceUrl)
