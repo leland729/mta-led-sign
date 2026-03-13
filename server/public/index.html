@@ -225,6 +225,19 @@
     .state-box .icon { font-size: 2.5rem; margin-bottom: 12px; }
     .state-box p { font-size: 0.85rem; line-height: 1.6; }
     .state-box code { font-size: 0.78rem; color: #555; }
+
+    /* ── Page notes ──────────────────────────────────────────── */
+    .page-notes {
+      max-width: 700px; margin: 28px auto 0;
+      border-top: 1px solid #1e1e1e; padding-top: 18px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .page-notes .note {
+      font-size: 0.72rem; color: #555; line-height: 1.5;
+      padding-left: 12px; border-left: 2px solid #2a2a2a;
+    }
+    .page-notes .note strong { color: #888; font-weight: 600; }
+    .page-notes .note.beta strong { color: #c8a000; }
   </style>
 </head>
 <body>
@@ -242,6 +255,13 @@
 
 <div id="devices">
   <div class="state-box"><div class="icon">⏳</div><p>Loading devices…</p></div>
+</div>
+
+<div class="page-notes">
+  <div class="note beta"><strong>Beta:</strong> Album art display is in beta — occasional rendering issues may occur.</div>
+  <div class="note"><strong>Applying changes:</strong> After saving, reset the device (unplug/replug or press the reset button) to pick up the new config.</div>
+  <div class="note"><strong>Firmware features:</strong> Some settings (like "Show album art") require a firmware reflash to take effect — use Advanced → Download Firmware, then copy <code>code.py</code> to the CIRCUITPY drive.</div>
+  <div class="note"><strong>Pages:</strong> Each device supports up to 5 pages in the carousel.</div>
 </div>
 
 <script>
@@ -430,7 +450,7 @@
   }
 
   function markDirty(el) {
-    const card = el.closest('.device-card');
+    const card = el.closest('.card');
     if (card) card.querySelector('.btn-save').disabled = false;
   }
 
@@ -464,12 +484,13 @@
   }
 
   function onLineChange(lineSel) {
-    const row  = lineSel.closest('.page-row');
-    const line = lineSel.value;
-    const dot  = row.querySelector('.line-dot');
-    const st   = row.querySelector('.f-station');
+    const row     = lineSel.closest('.page-row');
+    const line    = lineSel.value;
+    const dot     = row.querySelector('.line-dot');
+    const st      = row.querySelector('.f-station');
+    const prevSid = st?.value || '';
     if (dot) dot.style.background = lineColor(line);
-    if (st)  st.innerHTML = stationOpts(line, '');
+    if (st)  st.innerHTML = stationOpts(line, prevSid);
   }
 
   function removePage(btn) {

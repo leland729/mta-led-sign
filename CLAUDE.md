@@ -26,6 +26,7 @@ A real-time NYC subway departure board built on an Adafruit MatrixPortal S3 (ESP
 | `server/firmware/template.js` | Wraps `code.py` with `{{TOKEN}}` replacement for `/firmware/:mac` |
 | `circuitpy/secrets.py` | WiFi credentials (**never commit**) |
 | `server/app.js` | Node.js/Express server — GTFS-RT proxy, Admin API, firmware generator |
+| `server/data/mta-stations.js` | All MTA station stop IDs + names, verified against `gtfs_subway/stops.txt` |
 | `server/public/index.html` | Admin UI (vanilla JS, no framework) |
 | `gtfs_subway/stops.txt` | MTA GTFS static data (Feb 19 2026) — ground truth for stop IDs |
 | `.claude/launch.json` | Local preview server config (`node server/app.js`, port 3000) |
@@ -37,10 +38,10 @@ A real-time NYC subway departure board built on an Adafruit MatrixPortal S3 (ESP
 - URL: `https://subway-api-829904256043.us-east1.run.app`
 - Health check: `curl https://subway-api-829904256043.us-east1.run.app/health`
 
-**Environment variables set on Cloud Run:**
+**Environment variables set on Cloud Run** (all three confirmed set):
 - `MTA_API_KEY` — MTA GTFS-RT API key
 - `LASTFM_API_KEY` — Last.FM API key
-- `OPENWEATHER_API_KEY` — OpenWeather API key
+- `OPENWEATHER_API_KEY` — OpenWeather API key (server-side; devices no longer need their own key)
 
 **⚠️ Always use `--update-env-vars` (not `--set-env-vars`) when adding/changing a single key — `--set-env-vars` replaces ALL env vars and will wipe the others.**
 
@@ -64,26 +65,17 @@ A real-time NYC subway departure board built on an Adafruit MatrixPortal S3 (ESP
 | `ACE` | A, C, E |
 | `BDFM` | B, D, F, M |
 | `NQRW` | N, Q, R, W |
-| `123456S` | 1, 2, 3, 4, 5, 6, S |
-| `7` | 7 |
+| `123456S` | 1, 2, 3, 4, 5, 6, 7, S |
 | `G` | G |
 | `L` | L |
 | `JZ` | J, Z |
 
-## Station Data Status (as of v1.3.0)
-Station stop IDs in `server/app.js` are being corrected against `gtfs_subway/stops.txt`.
+**Note:** The MTA retired the dedicated `gtfs-7` feed — the 7 train is now in the main `gtfs` feed (`123456S`). The 7 line stations use `feed_group: '123456S'` in `mta-stations.js`.
 
-**Fixed:**
-- G line (`G_LINE_STATIONS`) — corrected all IDs (G22–G36, A42, F20–F27)
-- 7 line (`SEVEN_LINE_STATIONS`) — swapped 705/707, fixed cascade shift 708–726, added stop 726
-- ACE line (`ACE_LINE_STATIONS`) — removed nonexistent A29, fixed cascade shift A14–A65, fixed H-prefix Rockaway stops, fixed E train Queens stops (now using correct G05, G06, F01, F03, F05–F09, G08–G21)
+## Station Data Status
+All station stop IDs have been corrected against `gtfs_subway/stops.txt` and refactored into `server/data/mta-stations.js` (no longer inline in `app.js`).
 
-**Still needs fixing:**
-- `BDFM_LINE_STATIONS` — D14 should be `7 Av`, cascade shifts in Manhattan and Brooklyn sections
-- `NQRW_LINE_STATIONS` — needs verification
-- `LINE_123_STATIONS` — missing stop 108 (207 St), cascade shift, 3-train Brooklyn names wrong
-- `LINE_456_STATIONS` — 419=Wall St (not Nevins St), Brooklyn stops wrong
-- `JZ_LINE_STATIONS` — J12–J31 all wrong names
+**All lines verified and fixed** — including G, 7, ACE, BDFM, NQRW, 123, 456, JZ.
 
 ## Page Carousel (v1.4.0+)
 
@@ -124,10 +116,51 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 ### Firmware Display Panels (4-panel vertical carousel)
 | Index | View name | Content |
 |---|---|---|
-| 0 | `subway` | North + South next trains |
+| 0 | `subway` | Station name (top, orange) + North + South next trains |
 | 1 | `weather` | Current temp, condition, H/L |
 | 2 | `forecast` | 3-row day/high/low/condition |
 | 3 | `lastfm` | Artist (orange) / Album (gray) / Track (white) — left 32px; right 32px reserved for album art |
+
+### Subway Panel Layout (32px tall, 64px wide)
+```
+y=6   Station Name (orange, max 13 chars, from API response)
+y=16  ● L  Brooklyn          2m    ← northbound row
+y=26  ● L  8 Av              6m    ← southbound row
+```
+- Circle: center (5, 16/26), radius 4, filled with MTA line color
+- Route letter/number: x=4 (centered in circle), white
+- Dest: x=11 (1px gap after circle right edge at x=9), white, max 8 chars
+- Time: x=50, orange. "now" when minutes=0 (yellow). Min label "m": x=60
+- No-data state: dim gray circle (`0x444444`), blank route/dest, "--" time
+
+### MTA Line Colors (firmware `LINE_COLORS` dict)
+Colors are G/B-channel-swapped to compensate for panel hardware wiring (`#RRGGBB` stored as `#RRBBGG`):
+| Lines | Standard color | Stored value |
+|---|---|---|
+| 1, 2, 3 | Red `#EE352E` | `0xEE2E35` |
+| 4, 5, 6 | Green `#00933C` | `0x003C93` |
+| 7, 7X | Purple `#B933AD` | `0xB9AD33` |
+| A, C, E | Blue `#0039A6` | `0x00A639` |
+| B, D, F, M | Orange `#FF6319` | `0xFF1963` |
+| G | Lime green `#6CBE45` | `0x6C45BE` |
+| J, Z | Brown `#996633` | `0x993366` |
+| L | Gray (dark) | `0x5A5A5A` |
+| N, Q, R, W | Yellow `#FCCC0A` | `0xFC0ACC` |
+| S | Dark gray | `0x808381` |
+
+### Direction Labels (`northDest` / `southDest` in `mta-stations.js`)
+Max 8 chars. All lines:
+| Line | North | South |
+|---|---|---|
+| G | Ct Sq | Church |
+| L | 8 Av | Cnarsi |
+| 7 | Hudson | Flushing |
+| A/C/E | Uptown | Brooklyn |
+| B/D/F/M | Uptown | Brooklyn |
+| N/Q/R/W | Queens | Brooklyn |
+| 1/2/3 | Uptown | Downtown |
+| 4/5/6 | Uptown | Downtown |
+| J/Z | Jamaica | Broad |
 
 ### Last.FM Panel Notes
 - 3-line layout: artist (orange), album (gray), track (white) — left 32px text zone; right 32px album art
@@ -158,7 +191,6 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 ```
 
 ### Next Steps
-- **OPENWEATHER_API_KEY**: Set as Cloud Run env var (currently devices pass their own key)
 - **SEPTA**: Wire up real SEPTA bus API endpoint
 - **MLB / NFL**: Choose data source, wire up endpoints
 
@@ -172,6 +204,11 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 - Last.FM text scrolled across full 64px display — replaced pixel-scroll with character-windowing (labels fixed at x=2, 7-char window slides)
 - Album art wrong colors — panel hardware has G/B channels physically swapped; fixed by swapping G/B in server RGB565 encoding
 - Album art required CIRCUITPY write (silently fails when USB-mounted) — replaced with fully in-memory `displayio.Bitmap(32, 32, 65536)` built from raw bytes
+- MTA `gtfs-7` feed URL returns NoSuchKey — 7 train now served from main `gtfs` feed (`123456S`); `7X` express also added to `LINE_COLORS`
+- Subway panel dest labels overflowed into time zone — shortened direction labels, tightened pixel layout
+- Subway panel showed no station name — added station name row at top (y=6, orange, from API)
+- Circle color defaulted to WHITE when no train data — now falls back to dim gray (`0x444444`)
+- L train circle too light (gray-on-gray illegible) — darkened to `0x5A5A5A`
 
 ## CircuitPython Notes
 - Uses `adafruit_requests` (not `requests`) — does not support `json=` kwarg; use `json.dumps(data)` + `content_type='application/json'`

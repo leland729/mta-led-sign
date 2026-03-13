@@ -587,15 +587,15 @@ const JZ_LINE_STATIONS = [
 // line_group : key used by the Admin UI line selector
 // northDest / southDest : generic direction labels shown on the display
 const LINE_CONFIGS = [
-  { stations: G_LINE_STATIONS,    feed_group: 'G',       line_group: 'G',    northDest: 'Court Sq',           southDest: 'Church Av'              },
-  { stations: L_LINE_STATIONS,    feed_group: 'L',       line_group: 'L',    northDest: '8 Av',               southDest: 'Canarsie-Rockaway Pkwy' },
-  { stations: SEVEN_LINE_STATIONS,feed_group: '7',       line_group: '7',    northDest: 'Hudson Yards',       southDest: 'Flushing-Main St'       },
-  { stations: ACE_LINE_STATIONS,  feed_group: 'ACE',     line_group: 'ACE',  northDest: 'Uptown',             southDest: 'Brooklyn / Queens'      },
-  { stations: BDFM_LINE_STATIONS, feed_group: 'BDFM',    line_group: 'BDFM', northDest: 'Uptown & The Bronx', southDest: 'Brooklyn'               },
-  { stations: NQRW_LINE_STATIONS, feed_group: 'NQRW',    line_group: 'NQRW', northDest: 'Queens / Uptown',    southDest: 'Brooklyn'               },
-  { stations: LINE_123_STATIONS,  feed_group: '123456S', line_group: '123',  northDest: 'Uptown & The Bronx', southDest: 'Downtown & Brooklyn'    },
-  { stations: LINE_456_STATIONS,  feed_group: '123456S', line_group: '456',  northDest: 'Uptown & The Bronx', southDest: 'Downtown & Brooklyn'    },
-  { stations: JZ_LINE_STATIONS,   feed_group: 'JZ',      line_group: 'JZ',   northDest: 'Jamaica Center',     southDest: 'Broad St'               },
+  { stations: G_LINE_STATIONS,    feed_group: 'G',       line_group: 'G',    northDest: 'Ct Sq',    southDest: 'Church'   },
+  { stations: L_LINE_STATIONS,    feed_group: 'L',       line_group: 'L',    northDest: '8 Av',     southDest: 'Cnarsi'   },
+  { stations: SEVEN_LINE_STATIONS,feed_group: '123456S', line_group: '7',    northDest: 'Hudson',   southDest: 'Flushing' },
+  { stations: ACE_LINE_STATIONS,  feed_group: 'ACE',     line_group: 'ACE',  northDest: 'Uptown',   southDest: 'Brooklyn' },
+  { stations: BDFM_LINE_STATIONS, feed_group: 'BDFM',    line_group: 'BDFM', northDest: 'Uptown',   southDest: 'Brooklyn' },
+  { stations: NQRW_LINE_STATIONS, feed_group: 'NQRW',    line_group: 'NQRW', northDest: 'Queens',   southDest: 'Brooklyn' },
+  { stations: LINE_123_STATIONS,  feed_group: '123456S', line_group: '123',  northDest: 'Uptown',   southDest: 'Downtown' },
+  { stations: LINE_456_STATIONS,  feed_group: '123456S', line_group: '456',  northDest: 'Uptown',   southDest: 'Downtown' },
+  { stations: JZ_LINE_STATIONS,   feed_group: 'JZ',      line_group: 'JZ',   northDest: 'Jamaica',  southDest: 'Broad'    },
 ];
 
 // ─── STATIONS flat lookup (keyed by stop_id) ──────────────────────────────────

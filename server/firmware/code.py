@@ -44,6 +44,21 @@ YELLOW   = 0xFF00AA
 RED      = 0xEE352E
 MTA_BLUE = 0x39A600
 
+# MTA line colors — G/B channels swapped to match panel hardware wiring.
+# Formula: standard #RRGGBB → stored as #RRBBGG so panel displays correctly.
+LINE_COLORS = {
+    '1': 0xEE2E35, '2': 0xEE2E35, '3': 0xEE2E35,  # Red
+    '4': 0x003C93, '5': 0x003C93, '6': 0x003C93,  # Green
+    '7': 0xB9AD33, '7X': 0xB9AD33,                  # Purple (local + express)
+    'A': 0x00A639, 'C': 0x00A639, 'E': 0x00A639,  # Blue
+    'B': 0xFF1963, 'D': 0xFF1963, 'F': 0xFF1963, 'M': 0xFF1963,  # Orange
+    'G': 0x6C45BE,                                  # Lime green
+    'J': 0x993366, 'Z': 0x993366,                  # Brown
+    'L': 0x5A5A5A,                                  # Gray (darker for contrast)
+    'N': 0xFC0ACC, 'Q': 0xFC0ACC, 'R': 0xFC0ACC, 'W': 0xFC0ACC,  # Yellow
+    'S': 0x808381,                                  # Dark gray (shuttle)
+}
+
 # ── WiFi credentials (written to device by AP setup mode) ─────────────────────
 from secrets import secrets  # needs: ssid, password only
 
@@ -94,35 +109,44 @@ class TrainDisplay:
         """Initialize all four display panel groups."""
 
         # Panel 0: Subway (y=0 when visible)
+        # Layout (32px tall): station name y=6 | north y=16 | south y=26
         self.subway_group = displayio.Group()
         self.subway_group.y = 0
 
-        if has_shapes:
-            self.subway_group.append(Circle(5, 9, 4, fill=GREEN))
+        # Row 0 — station name (full width, no circle)
+        self.station_name = label.Label(font, text="", color=ORANGE, x=2, y=6)
+        self.subway_group.append(self.station_name)
 
-        self.north_route = label.Label(font, text="G",         color=WHITE,  x=4,  y=10)
-        self.north_dest  = label.Label(font, text="Court Sq",  color=WHITE,  x=12, y=10)
-        self.north_time  = label.Label(font, text="--",        color=ORANGE, x=50, y=10)
-        self.north_min   = label.Label(font, text="",          color=ORANGE, x=60, y=10)
+        # Row 1 — northbound
+        self.north_circle = None
+        if has_shapes:
+            self.north_circle = Circle(5, 16, 4, fill=GREEN)
+            self.subway_group.append(self.north_circle)
+
+        self.north_route = label.Label(font, text="",   color=WHITE,  x=4,  y=17)
+        self.north_dest  = label.Label(font, text="",   color=WHITE,  x=11, y=17)
+        self.north_time  = label.Label(font, text="--", color=ORANGE, x=50, y=17)
+        self.north_min   = label.Label(font, text="",   color=ORANGE, x=60, y=17)
         self.subway_group.append(self.north_route)
         self.subway_group.append(self.north_dest)
         self.subway_group.append(self.north_time)
         self.subway_group.append(self.north_min)
 
+        # Row 2 — southbound
+        self.south_circle = None
         if has_shapes:
-            self.subway_group.append(Circle(5, 22, 4, fill=GREEN))
+            self.south_circle = Circle(5, 26, 4, fill=GREEN)
+            self.subway_group.append(self.south_circle)
 
-        self.south_route = label.Label(font, text="G",         color=WHITE,  x=4,  y=23)
-        self.south_dest  = label.Label(font, text="Church Av", color=WHITE,  x=12, y=23)
-        self.south_time  = label.Label(font, text="--",        color=ORANGE, x=50, y=23)
-        self.south_min   = label.Label(font, text="",          color=ORANGE, x=60, y=23)
+        self.south_route = label.Label(font, text="",   color=WHITE,  x=4,  y=27)
+        self.south_dest  = label.Label(font, text="",   color=WHITE,  x=11, y=27)
+        self.south_time  = label.Label(font, text="--", color=ORANGE, x=50, y=27)
+        self.south_min   = label.Label(font, text="",   color=ORANGE, x=60, y=27)
         self.subway_group.append(self.south_route)
         self.subway_group.append(self.south_dest)
         self.subway_group.append(self.south_time)
         self.subway_group.append(self.south_min)
 
-        self.status = label.Label(font, text="", color=WHITE, x=15, y=16)
-        self.subway_group.append(self.status)
         self.main_group.append(self.subway_group)
 
         # Panel 1: Current weather (y=MATRIX_HEIGHT initially)
@@ -224,9 +248,6 @@ class TrainDisplay:
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def show_status(self, message):
-        self.status.text = message[:8]
-
     def show_error(self, show=True):
         if self.error_group:
             self.error_group.hidden = not show
@@ -255,11 +276,22 @@ class TrainDisplay:
         """Update subway panel from /api/next/:stationId response."""
         if not data:
             return
-        self.status.text = ""
-        north_minutes = (data.get('north') or {}).get('minutes')
-        self.update_train_time(self.north_time, self.north_min, north_minutes)
-        south_minutes = (data.get('south') or {}).get('minutes')
-        self.update_train_time(self.south_time, self.south_min, south_minutes)
+        self.station_name.text = data.get('station', '')[:13]
+        north = data.get('north') or {}
+        south = data.get('south') or {}
+        n_route = north.get('route', '')
+        s_route = south.get('route', '')
+        self.north_route.text = n_route
+        self.north_dest.text  = north.get('dest', '')[:8]
+        self.south_route.text = s_route
+        self.south_dest.text  = south.get('dest', '')[:8]
+        DIM = 0x444444  # shown when no train data
+        if self.north_circle:
+            self.north_circle.fill = LINE_COLORS.get(n_route, DIM)
+        if self.south_circle:
+            self.south_circle.fill = LINE_COLORS.get(s_route, DIM)
+        self.update_train_time(self.north_time, self.north_min, north.get('minutes'))
+        self.update_train_time(self.south_time, self.south_min, south.get('minutes'))
 
     def update_weather(self, data):
         """Update current weather panel from /api/weather?mode=current response."""
