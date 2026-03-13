@@ -12,6 +12,7 @@ A real-time NYC subway departure board built on an Adafruit MatrixPortal S3 (ESP
                                     ↑
                           [MTA GTFS-RT feeds]
                           [OpenWeather API]
+                          [Last.FM API]
                           [Firestore: device config]
                                     ↑
                           [Admin UI: /public/index.html]
@@ -21,8 +22,9 @@ A real-time NYC subway departure board built on an Adafruit MatrixPortal S3 (ESP
 
 | File | Purpose |
 |------|---------|
-| `circuitpy/code.py` | CircuitPython firmware — runs on the device |
-| `circuitpy/secrets.py` | WiFi credentials + optional api_url override (**never commit**) |
+| `server/firmware/code.py` | CircuitPython firmware source — copied to `CIRCUITPY` drive |
+| `server/firmware/template.js` | Wraps `code.py` with `{{TOKEN}}` replacement for `/firmware/:mac` |
+| `circuitpy/secrets.py` | WiFi credentials (**never commit**) |
 | `server/app.js` | Node.js/Express server — GTFS-RT proxy, Admin API, firmware generator |
 | `server/public/index.html` | Admin UI (vanilla JS, no framework) |
 | `gtfs_subway/stops.txt` | MTA GTFS static data (Feb 19 2026) — ground truth for stop IDs |
@@ -32,19 +34,22 @@ A real-time NYC subway departure board built on an Adafruit MatrixPortal S3 (ESP
 
 **Server:** Google Cloud Run (`us-east1`)
 - Deploy: `cd server && gcloud run deploy subway-api --source . --region us-east1`
-- URL: `https://subway-api-336mpuaosa-ue.a.run.app` (also `https://subway-api-829904256043.us-east1.run.app`)
-- Health check: `curl https://subway-api-336mpuaosa-ue.a.run.app/health`
+- URL: `https://subway-api-829904256043.us-east1.run.app`
+- Health check: `curl https://subway-api-829904256043.us-east1.run.app/health`
 
-**Device firmware:** Must be manually copied to the `CIRCUITPY` drive (USB mount).
-- The device is read-only when USB is connected in normal mode
-- AP mode (hold button on boot) allows editing files via browser
+**Environment variables set on Cloud Run:**
+- `MTA_API_KEY` — MTA GTFS-RT API key
+- `LASTFM_API_KEY` — Last.FM API key (set 2026-03-13)
+- `OPENWEATHER_API_KEY` — not yet set; devices pass their own key via `?key=` param
+
+**Device firmware:** Download from Admin UI (Advanced → Download Firmware) and copy `code.py` to the `CIRCUITPY` drive via USB.
 
 ## Device Config Flow
-1. Admin UI → POST `/api/device/:mac` → saved to Firestore
-2. Device boots → GET `/api/device/:mac/config` → applies config from Firestore
-3. Config keys in Firestore: `station_id`, `zip_code`, `openweather_api_key`, `scroll_speed`, `brightness`
+1. Admin UI → PATCH `/api/device/:mac` → saved to Firestore
+2. Device boots → POST `/api/device/:mac/register` + GET `/api/device/:mac/config` → applies config
+3. Firestore keys per device: `display_name`, `station_id`, `zip_code`, `brightness`, `scroll_speed`, `openweather_api_key`, `lastfm_api_key`, `pages[]`
 
-**secrets.py** only holds WiFi credentials (`ssid`, `password`) and optionally `api_url`. It is never written by the server — the device is read-only over WiFi.
+**secrets.py** only holds WiFi credentials (`ssid`, `password`). Never written by the server.
 
 ## GTFS Stop ID Format
 - Parent stations (use these): `stop_id` where `location_type=1` in `gtfs_subway/stops.txt`
@@ -78,34 +83,57 @@ Station stop IDs in `server/app.js` are being corrected against `gtfs_subway/sto
 - `LINE_456_STATIONS` — 419=Wall St (not Nevins St), Brooklyn stops wrong
 - `JZ_LINE_STATIONS` — J12–J31 all wrong names
 
-## Planned Feature: Page Carousel
+## Page Carousel (v1.4.0+)
 
-### Concept
-Each device has up to **5 pages** that cycle on a global timer (the existing `scroll_speed` setting). Each page is independently configured with a widget type + its settings. The Admin UI becomes a page builder.
+Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`). Each page is independently configured with a widget type + its settings.
 
 ### Carousel Rules
 - Max 5 pages per device
-- Global dwell time (one `scroll_speed` for all pages)
+- Global dwell time (`scroll_speed` seconds per page)
 - Pages stored as an ordered array in Firestore under the device's document
+- Admin UI supports drag-to-reorder pages
 
 ### Widget Types
 
 | Widget | Config Fields | Data Source | Status |
 |---|---|---|---|
-| NYC MTA | Line, Station | MTA GTFS-RT (existing) | ✅ Live |
-| Weather | Zip code, Mode (current / 3-day / 7-day) | OpenWeather API (existing) | ✅ Live |
-| SEPTA | Route, Stop | SEPTA API (bus to start) | 🔲 Not built |
-| Last.FM | Username, Display mode (now playing / recent) | Last.FM API | 🔲 Not built |
-| MLB | Team, Mode (schedule / live score) | TBD data source | 🔲 Framework only |
-| NFL | Team, Mode (schedule / live score) | TBD data source | 🔲 Framework only |
+| NYC MTA | Line, Station | MTA GTFS-RT | ✅ Live |
+| Weather | Zip code, Mode (current / 3-day / 7-day) | OpenWeather API | ✅ Live |
+| Last.FM | Username, Mode (now playing / recent) | Last.FM API | ✅ Live |
+| SEPTA | Route, Stop | SEPTA API | 🔲 Stub only |
+| MLB | Team, Mode (schedule / live score) | TBD | 🔲 Stub only |
+| NFL | Team, Mode (schedule / live score) | TBD | 🔲 Stub only |
 
-### Notes per Widget
-- **Weather**: Each weather page has its own zip code (supports multiple locations across pages)
-- **SEPTA**: Bus routes first; Regional Rail / Subway / Trolley can be added later
-- **Last.FM**: Username-based, no OAuth needed. Spotify ruled out (OAuth complexity)
-- **MLB / NFL**: Build Admin UI framework now, wire up data feed once source is chosen
+### Server Endpoints
+| Endpoint | Description |
+|---|---|
+| `GET /api/next/:stationId` | Next MTA trains for a parent stop ID |
+| `GET /api/weather?zip=&mode=current\|3-day\|7-day[&key=]` | OpenWeather proxy |
+| `GET /api/lastfm?username=&mode=nowplaying\|recent[&key=]` | Last.FM proxy |
+| `GET /api/septa` | Stub (returns `{ stub: true }`) |
+| `GET /api/mlb` | Stub |
+| `GET /api/nfl` | Stub |
+| `GET /api/device/:mac/config` | Firestore config for device |
+| `POST /api/device/:mac/register` | Register/upsert device in Firestore |
+| `PATCH /api/device/:mac` | Update device config fields |
+| `GET /firmware/:mac` | Generate and download `code.py` for device |
 
-### Firestore Schema (proposed)
+### Firmware Display Panels (4-panel vertical carousel)
+| Index | View name | Content |
+|---|---|---|
+| 0 | `subway` | North + South next trains |
+| 1 | `weather` | Current temp, condition, H/L |
+| 2 | `forecast` | 3-row day/high/low/condition |
+| 3 | `lastfm` | Artist (orange) / Album (gray) / Track (white) — left 32px; right 32px reserved for album art |
+
+### Last.FM Panel Notes
+- 3-line layout: artist (orange), album (gray), track (white) — all constrained to left 32px
+- Text wider than 30px scrolls as a marquee (1px/tick at 0.1s = ~10px/s)
+- 1-second hold before scroll starts; resets on every carousel cycle
+- Right 32px of the panel is reserved for future 32×32 pixel album art
+- `LASTFM_API_KEY` is set as a Cloud Run env var; devices can also pass `?key=` from their Firestore config
+
+### Firestore Schema
 ```json
 {
   "display_name": "Kitchen Sign",
@@ -114,49 +142,35 @@ Each device has up to **5 pages** that cycle on a global timer (the existing `sc
   "openweather_api_key": "...",
   "lastfm_api_key": "...",
   "pages": [
-    { "type": "mta",     "line": "G", "station_id": "G26" },
-    { "type": "weather", "zip": "10001", "mode": "3-day" },
-    { "type": "mlb",     "team": "NYM", "mode": "schedule" },
-    { "type": "lastfm",  "username": "leland", "mode": "nowplaying" },
-    { "type": "septa",   "route": "42", "stop_id": "12345" }
+    { "type": "mta",     "line": "G",      "station_id": "G26" },
+    { "type": "weather", "zip": "10001",   "mode": "3-day" },
+    { "type": "lastfm",  "username": "...", "mode": "nowplaying" },
+    { "type": "mlb",     "team": "NYM",    "mode": "schedule" },
+    { "type": "septa",   "route": "42",    "stop_id": "12345" }
   ]
 }
 ```
 
-### Admin UI Layout (planned)
-```
-[ Device: Kitchen Sign ]          Brightness [---] Speed [---]
-
-  Page 1  [ MTA ▾ ]     [ G Line ▾ ]  [ Greenpoint Av ▾ ]
-  Page 2  [ Weather ▾ ]  [ 10001   ]  [ 3-day ▾ ]
-  Page 3  [ MLB ▾ ]      [ Mets ▾  ]  [ Schedule ▾ ]
-  Page 4  [ Last.FM ▾ ]  [ username]  [ Now Playing ▾ ]
-  Page 5  [ SEPTA ▾ ]    [ Route 42▾] [ Stop ▾ ]
-                                               [ + Add Page ]
-[ Save ]
-```
-
-### Implementation Order (when ready to build)
-1. Refactor Firestore schema to support `pages` array (migrate existing `station_id`/`zip_code` flat fields → page objects)
-2. Rebuild Admin UI as page builder
-3. Update server API endpoints to serve per-page data
-4. Update `code.py` to iterate pages in carousel loop
-5. Add SEPTA bus endpoint to server
-6. Add Last.FM endpoint to server
-7. Add MLB/NFL framework endpoints (stubbed)
+### Next Steps
+- **Album art**: Fetch album art URL from Last.FM response, server-side resize to 32×32 BMP, serve as `/api/lastfm/art?url=`, display in right 32px of lastfm panel as a `TileGrid`
+- **OPENWEATHER_API_KEY**: Set as Cloud Run env var (currently devices pass their own key)
+- **SEPTA**: Wire up real SEPTA bus API endpoint
+- **MLB / NFL**: Choose data source, wire up endpoints
 
 ---
 
 ## Known Bugs Fixed
-- `STATION_ID` was missing from Firestore config override block in both `code.py` and the firmware template in `app.js` — device always showed Greenpoint regardless of Admin UI setting
-- `(data.get('north') or {}).get('minutes')` — null-safe fix for when GTFS returns null trains
+- `STATION_ID` missing from Firestore config override block — device always showed Greenpoint
+- `(data.get('north') or {}).get('minutes')` — null-safe fix for null GTFS trains
 - A29 doesn't exist in GTFS — was causing "14 St" to return null trains
+- `LASTFM_API_KEY` not set on Cloud Run — endpoint returned 503; fixed by setting env var
 
 ## CircuitPython Notes
-- Uses `adafruit_requests` (not `requests`) — does not support `json=` kwarg, use `json.dumps(data)` + `content_type='application/json'`
+- Uses `adafruit_requests` (not `requests`) — does not support `json=` kwarg; use `json.dumps(data)` + `content_type='application/json'`
 - Device MAC address used as Firestore document key
 - `matrixportal.display.brightness` must be set after Firestore config is applied
 - Free memory ~1.8MB — keep code lean
+- Colors on this panel use non-standard channel ordering — calibrated constants are in `code.py`; gray is symmetric so `0x444444` works regardless
 
 ## Local Dev
 ```bash
@@ -165,4 +179,4 @@ node app.js   # or use preview_start in Claude
 ```
 Admin UI: http://localhost:3000
 
-Firestore won't work locally (no GCP credentials) — expected. GTFS-RT and weather API will work if MTA_API_KEY / OPENWEATHER_API_KEY env vars are set.
+Firestore won't work locally (no GCP credentials) — expected. GTFS-RT, weather, and Last.FM APIs will work if `MTA_API_KEY` / `OPENWEATHER_API_KEY` / `LASTFM_API_KEY` env vars are set.

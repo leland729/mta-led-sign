@@ -2,9 +2,12 @@
 
 /**
  * NYC Subway Sign Server
- * Version : 1.4.0
+ * Version : 1.4.1
  * Updated : 2026-03-13
- * Changes : Page carousel — multi-widget server endpoints (weather proxy,
+ * Changes : Last.FM panel — 3-line layout (artist/album/track), marquee scroll
+ *           with 1s hold, album field added to recent-tracks response.
+ *
+ * v1.4.0  : Page carousel — multi-widget server endpoints (weather proxy,
  *           Last.FM, SEPTA/MLB/NFL stubs), firmware carousel rewrite with
  *           4-panel scroll and lastfm support, Admin UI lastfm_api_key field
  *           and drag-to-reorder pages.
