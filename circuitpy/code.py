@@ -1,10 +1,10 @@
 """
 MTA LED Sign - 64x32 Single Panel
-Version : 1.3.0
-Updated : 2026-03-11
-Changes : Fix null crash in display.update() — same (or {}) pattern.
-          Remove hardcoded G26/11222 defaults; all config comes from Firestore.
-          secrets.py now only needs ssid, password, and optionally api_url.
+{{HEADER}}
+
+Template: placeholder tokens (e.g. SERVER_URL, BRIGHTNESS) are replaced by
+the server when generating device firmware via GET /firmware/:mac.
+See server/firmware/template.js.
 """
 
 import time
@@ -21,7 +21,7 @@ try:
 except ImportError:
     has_shapes = False
 
-print("MTA Sign - 64x32 Improved Version")
+print("MTA Sign - 64x32")
 print("=" * 40)
 
 # Configuration
@@ -30,7 +30,6 @@ MATRIX_HEIGHT = 32
 UPDATE_INTERVAL = 30  # seconds
 WEATHER_UPDATE_INTERVAL = 600  # 10 minutes
 FORECAST_UPDATE_INTERVAL = 1800  # 30 minutes
-VIEW_CYCLE_INTERVAL = 10  # seconds to show each view before switching
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds between retries
 
@@ -43,28 +42,18 @@ YELLOW = 0xFF00AA
 RED = 0xEE352E
 MTA_BLUE = 0x39A600
 
-# Load WiFi credentials and server URL from secrets.py.
-# All other config (station_id, zip_code, etc.) comes from Firestore via the
-# server — nothing here should need editing when you change Admin UI settings.
-try:
-    from secrets import secrets
-    SERVER_URL = secrets.get("api_url", "https://subway-api-336mpuaosa-ue.a.run.app")
-    BRIGHTNESS = 0.4   # overridden by Firestore below
-    CFG = {
-        "station_id":      "",   # set by Firestore
-        "weather_api_key": "",   # set by Firestore
-        "zip_code":        "",   # set by Firestore
-    }
-except ImportError:
-    print("Warning: secrets.py not found, using defaults")
-    secrets = {"ssid": "WIFI", "password": "PASS"}
-    SERVER_URL = "https://subway-api-336mpuaosa-ue.a.run.app"
-    BRIGHTNESS = 0.4
-    CFG = {
-        "station_id":      "",
-        "weather_api_key": "",
-        "zip_code":        "",
-    }
+# ── WiFi credentials (written to device by AP setup mode) ─────────────────────
+from secrets import secrets  # needs: ssid, password only
+
+# ── Device config (injected by server at firmware generation time) ─────────────
+SERVER_URL          = "{{SERVER_URL}}"
+BRIGHTNESS          = {{BRIGHTNESS}}
+VIEW_CYCLE_INTERVAL = {{SCROLL_SPEED}}   # seconds per view panel
+CFG = {
+    "station_id":      "{{STATION_ID}}",
+    "weather_api_key": "{{WEATHER_API_KEY}}",
+    "zip_code":        "{{ZIP_CODE}}",
+}
 
 # Initialize display
 matrixportal = MatrixPortal(
