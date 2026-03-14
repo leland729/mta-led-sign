@@ -122,6 +122,13 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 | 3 | `lastfm` | Artist (orange) / Album (gray) / Track (white) — left 32px; right 32px reserved for album art |
 | 4 | `septa` | SEPTA logo (left 22px) + route header + next 2 arrival times |
 
+### Boot Splash Screen
+- Yellow lightning bolt bitmap (5×7 px) at x=3, y=13 — left side of display
+- `line1` (white) at x=20, y=12 — shows "Connecting" / "Connected!" / "AP Mode" etc.
+- `line2` (orange) at x=20, y=21 — shows "WiFi 1/3", "Syncing...", AP SSID, etc.
+- `show_splash(line1, line2)` switches `root_group` to splash; `hide_splash()` switches back to `main_group`
+- **Never copy `server/firmware/code.py` directly to CIRCUITPY** — it contains `{{TOKEN}}` placeholders; always download via Admin UI → Advanced → Download Firmware
+
 ### SEPTA Panel Notes
 - Feed: `https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb` — same protobuf format as MTA, no API key required
 - Stop IDs are already directional (each pole is a unique stop ID — no N/S suffix needed)
@@ -227,6 +234,9 @@ Max 8 chars. All lines:
 - SEPTA `/api/septa` was a stub — replaced with real GTFS-RT TripUpdates handler using `gtfs-realtime-bindings`; 5th panel added to firmware carousel; `scroll_to_view()` had hardcoded `range(4)` preventing the SEPTA panel from rendering (fixed to `range(len(groups))`)
 - SEPTA logo was portrait (11×16) and sideways — rasterized from `images/SEPTA.bmp` at correct 22×16 landscape ratio via Lanczos downscale; `Bitmap(22, 16)` centered at `y=8`
 - Weather current panel had no icon — added 16×16 sprite from weather icon sprite sheet; 7-day forecast mode deprecated (treated as 3-day)
+- Boot flash of subway panel (2 green circles) — removed premature `matrixportal.display.root_group = self.main_group` from `__init__`; display now stays blank until splash is ready
+- Splash screen showed green circle with "G" — replaced with 5×7 yellow lightning bolt bitmap (hardcoded pixel array, 2-color Palette with transparency)
+- AP mode display frozen on "WiFi 3/3" — `setup_mode.py` called `display.show_status()` which doesn't exist; replaced all calls with `display.show_splash()`
 
 ## CircuitPython Notes
 - Uses `adafruit_requests` (not `requests`) — does not support `json=` kwarg; use `json.dumps(data)` + `content_type='application/json'`

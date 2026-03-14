@@ -1,6 +1,6 @@
 {
   "name": "subway-sign-server",
-  "version": "1.7.7",
+  "version": "1.7.8",
   "description": "MTA GTFS-RT API server for LED subway signs",
   "main": "app.js",
   "scripts": {

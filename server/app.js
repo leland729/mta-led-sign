@@ -2,11 +2,14 @@
 
 /**
  * NYC Subway Sign Server
- * Version : 1.7.7
+ * Version : 1.7.8
  * Updated : 2026-03-14
- * Changes : SEPTA logo redrawn at correct 22×16 from SEPTA.bmp source
- *           (Lanczos downscale, landscape aspect ratio, centered y=8).
+ * Changes : Boot flash fixed (removed premature root_group assignment);
+ *           splash circle+G replaced with yellow lightning bolt bitmap;
+ *           AP mode display fixed (show_status → show_splash).
  *
+ * v1.7.7  : SEPTA logo redrawn at correct 22×16 from SEPTA.bmp source
+ *           (Lanczos downscale, landscape aspect ratio, centered y=8).
  * v1.7.5  : Weather panel — 16×16 icon sprite added; 3-day forecast cleanup.
  * v1.7.4  : SEPTA logo embedded in firmware as RGB565 tuple — no BMP file
  *           needed on CIRCUITPY; built into displayio.Bitmap(22,16) in RAM.
