@@ -127,7 +127,8 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 - Stop IDs are already directional (each pole is a unique stop ID — no N/S suffix needed)
 - Config fields: `route` (e.g., `"48"`) and `stop_id` (e.g., `"5372"`)
 - Layout: pixel-art SEPTA logo in left 22px column; route + next 2 ETAs in right 42px
-- Logo embedded directly in firmware as a hardcoded RGB565 tuple (`SEPTA_LOGO` in `code.py`); built into a `displayio.Bitmap(11, 16, 65536)` in RAM at boot via `_build_septa_logo()` — no BMP file needed on CIRCUITPY
+- Logo embedded directly in firmware as a hardcoded RGB565 tuple (`SEPTA_LOGO` in `code.py`); built into a `displayio.Bitmap(22, 16, 65536)` in RAM at boot via `_build_septa_logo()` — no BMP file needed on CIRCUITPY
+- Logo source: `images/SEPTA.bmp` (1563×1153 RGBA), Lanczos-downscaled to 22×16, centered at `y=8` on 32px panel
 - G/B channels are pre-swapped in the tuple values to match panel hardware wiring (same convention as `LINE_COLORS`)
 - Long objects from `gtfs-realtime-bindings` handled: `typeof time === 'object' ? time.low : time`
 
@@ -204,7 +205,6 @@ Max 8 chars. All lines:
 - **MLB / NFL**: Choose data source, wire up endpoints
 
 ### Known Issues / Backlog
-- **Weather panel — icon**: Current weather should show a weather icon alongside temp/condition
 - **Weather panel — location**: Show city/state/zip on the current weather screen
 - **G train dest label**: `'Ct Sq'` should be `'Court Sq'` — dest field can hold ~10 chars, no need to abbreviate
 - **Express train route letters**: `7X`, `6X`, etc. display as two characters in the circle — strip the `X` suffix so only the number shows (express vs local isn't meaningful on the sign)
@@ -225,6 +225,8 @@ Max 8 chars. All lines:
 - Circle color defaulted to WHITE when no train data — now falls back to dim gray (`0x444444`)
 - L train circle too light (gray-on-gray illegible) — darkened to `0x5A5A5A`
 - SEPTA `/api/septa` was a stub — replaced with real GTFS-RT TripUpdates handler using `gtfs-realtime-bindings`; 5th panel added to firmware carousel; `scroll_to_view()` had hardcoded `range(4)` preventing the SEPTA panel from rendering (fixed to `range(len(groups))`)
+- SEPTA logo was portrait (11×16) and sideways — rasterized from `images/SEPTA.bmp` at correct 22×16 landscape ratio via Lanczos downscale; `Bitmap(22, 16)` centered at `y=8`
+- Weather current panel had no icon — added 16×16 sprite from weather icon sprite sheet; 7-day forecast mode deprecated (treated as 3-day)
 
 ## CircuitPython Notes
 - Uses `adafruit_requests` (not `requests`) — does not support `json=` kwarg; use `json.dumps(data)` + `content_type='application/json'`

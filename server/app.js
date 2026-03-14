@@ -2,11 +2,22 @@
 
 /**
  * NYC Subway Sign Server
- * Version : 1.4.1
- * Updated : 2026-03-13
- * Changes : Last.FM panel — 3-line layout (artist/album/track), marquee scroll
- *           with 1s hold, album field added to recent-tracks response.
+ * Version : 1.7.7
+ * Updated : 2026-03-14
+ * Changes : SEPTA logo redrawn at correct 22×16 from SEPTA.bmp source
+ *           (Lanczos downscale, landscape aspect ratio, centered y=8).
  *
+ * v1.7.5  : Weather panel — 16×16 icon sprite added; 3-day forecast cleanup.
+ * v1.7.4  : SEPTA logo embedded in firmware as RGB565 tuple — no BMP file
+ *           needed on CIRCUITPY; built into displayio.Bitmap(22,16) in RAM.
+ * v1.7.0  : SEPTA live bus arrivals — real GTFS-RT TripUpdates handler,
+ *           5th carousel panel, pixel-art logo, Admin UI SEPTA page type.
+ * v1.6.0  : Subway panel redesign — station name row, tightened layout,
+ *           7 train moved to 123456S feed, 7X express added to LINE_COLORS.
+ * v1.5.0  : Last.FM album art — in-memory displayio.Bitmap(32,32), G/B
+ *           channel swap in /api/lastfm/art, character-windowing scroll.
+ * v1.4.1  : Last.FM panel — 3-line layout (artist/album/track), marquee
+ *           scroll with 1s hold, album field added to recent-tracks response.
  * v1.4.0  : Page carousel — multi-widget server endpoints (weather proxy,
  *           Last.FM, SEPTA/MLB/NFL stubs), firmware carousel rewrite with
  *           4-panel scroll and lastfm support, Admin UI lastfm_api_key field
