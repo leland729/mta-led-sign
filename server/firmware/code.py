@@ -136,7 +136,6 @@ class TrainDisplay:
 
     def __init__(self):
         self.main_group = displayio.Group()
-        matrixportal.display.root_group = self.main_group
         self.current_view = "subway"
         self._setup_display()
         self._setup_splash()
@@ -296,12 +295,26 @@ class TrainDisplay:
     def _setup_splash(self):
         """Boot splash — shown during WiFi connect."""
         self.splash_group = displayio.Group()
-        if has_shapes:
-            self.splash_group.append(Circle(10, 16, 5, fill=GREEN))
-        self.splash_letter = label.Label(font, text="G",           color=WHITE,  x=8,  y=17)
-        self.splash_line1  = label.Label(font, text="Starting...", color=WHITE,  x=20, y=12)
-        self.splash_line2  = label.Label(font, text="",            color=ORANGE, x=20, y=21)
-        self.splash_group.append(self.splash_letter)
+        # Lightning bolt icon — 5×7 px, yellow, G/B swapped for panel hardware
+        _bolt_pixels = (
+            0,0,1,1,0,
+            0,1,1,1,0,
+            1,1,1,1,0,
+            0,1,1,1,1,
+            0,0,1,1,1,
+            0,0,1,1,0,
+            0,0,1,0,0,
+        )
+        _bm  = displayio.Bitmap(5, 7, 2)
+        _pal = displayio.Palette(2)
+        _pal[0] = 0x000000
+        _pal.make_transparent(0)
+        _pal[1] = 0xFF00AA  # yellow — G/B swapped (displays as warm yellow on panel)
+        for i, v in enumerate(_bolt_pixels):
+            _bm[i % 5, i // 5] = v
+        self.splash_group.append(displayio.TileGrid(_bm, pixel_shader=_pal, x=3, y=13))
+        self.splash_line1 = label.Label(font, text="Starting...", color=WHITE,  x=20, y=12)
+        self.splash_line2 = label.Label(font, text="",            color=ORANGE, x=20, y=21)
         self.splash_group.append(self.splash_line1)
         self.splash_group.append(self.splash_line2)
 
