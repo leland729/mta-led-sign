@@ -251,10 +251,13 @@ def _write_secrets(ssid, password):
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def run(display=None):
+def run(display=None, sta_mac=''):
     """
     Start AP mode. Serves a WiFi credential form and writes secrets.py on
     submission. Calls microcontroller.reset() when done — never returns.
+
+    sta_mac: STA MAC address read before AP mode started (passed from code.py
+             so the Admin UI deep link uses the same MAC as Firestore registration).
     """
     import wifi
     import socketpool
@@ -267,12 +270,15 @@ def run(display=None):
     print('Navigate to http://' + AP_IP)
     print('=' * 40)
 
-    # Read device MAC for the Admin UI deep link
-    try:
-        _mac_bytes = wifi.radio.mac_address
-        device_mac = ':'.join('{:02x}'.format(b) for b in _mac_bytes)
-    except Exception:
-        device_mac = ''
+    # Use the STA MAC passed in from code.py (read before AP mode changed the
+    # radio state). Fall back to reading it now only if not provided.
+    if sta_mac:
+        device_mac = sta_mac
+    else:
+        try:
+            device_mac = ':'.join('{:02x}'.format(b) for b in wifi.radio.mac_address)
+        except Exception:
+            device_mac = ''
     print('Device MAC:', device_mac)
 
     # Update display if available
