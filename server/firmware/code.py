@@ -34,6 +34,22 @@ RETRY_DELAY     = 5    # seconds between WiFi retries
 # View index for the 5-panel vertical carousel
 VIEW_INDEX = {'subway': 0, 'weather': 1, 'forecast': 2, 'lastfm': 3, 'septa': 4}
 
+# ── Weather icon sprite map ────────────────────────────────────────────────────
+# Matches the OWM icon codes in weather_icons.bmp (16×16 tiles, 2 cols × 9 rows).
+# Column 0 = day, column 1 = night. Index = (row * 2) + col.
+_ICON_MAP = ("01", "02", "03", "04", "09", "10", "11", "13", "50")
+
+def _icon_index(code):
+    """Return sprite index for an OWM icon code like '01d' or '10n'."""
+    if not code or len(code) < 3:
+        return 0
+    key = code[:2]
+    col = 1 if code[2:3] == 'n' else 0
+    for i, k in enumerate(_ICON_MAP):
+        if k == key:
+            return i * 2 + col
+    return 0
+
 # ── Colors ────────────────────────────────────────────────────────────────────
 BLACK     = 0x000000
 WHITE     = 0xFFFFFF
@@ -172,38 +188,46 @@ class TrainDisplay:
         self.main_group.append(self.subway_group)
 
         # Panel 1: Current weather (y=MATRIX_HEIGHT initially)
+        # Layout: 16×16 icon at x=0,y=8 | temp x=20,y=10 | H/L x=18,y=26
         self.weather_group = displayio.Group()
         self.weather_group.y = MATRIX_HEIGHT
 
-        self.weather_condition  = label.Label(font, text="",    color=WHITE,    x=8,  y=10)
-        self.weather_temp       = label.Label(font, text="--F", color=ORANGE,   x=24, y=18)
-        self.weather_high_label = label.Label(font, text="H:",  color=WHITE,    x=12, y=26)
-        self.weather_high       = label.Label(font, text="--",  color=RED,      x=20, y=26)
-        self.weather_low_label  = label.Label(font, text="L:",  color=WHITE,    x=36, y=26)
-        self.weather_low        = label.Label(font, text="--",  color=MTA_BLUE, x=44, y=26)
-        self.weather_group.append(self.weather_condition)
+        # Weather icon sprite — loaded from /weather_icons.bmp on CIRCUITPY
+        # (G/B pre-swapped panel version). Silently blank if file missing.
+        self._weather_icon = None
+        try:
+            _wbmp = displayio.OnDiskBitmap("/weather_icons.bmp")
+            self._weather_icon = displayio.TileGrid(
+                _wbmp, pixel_shader=_wbmp.pixel_shader,
+                tile_width=16, tile_height=16,
+                x=0, y=8
+            )
+            self.weather_group.append(self._weather_icon)
+        except Exception:
+            pass  # BMP not on device; icon area stays blank
+
+        self.weather_temp = label.Label(font, text="--F",  color=ORANGE,   x=20, y=10)
+        self.weather_high = label.Label(font, text="H:--", color=RED,      x=18, y=26)
+        self.weather_low  = label.Label(font, text="L:--", color=MTA_BLUE, x=40, y=26)
         self.weather_group.append(self.weather_temp)
-        self.weather_group.append(self.weather_high_label)
         self.weather_group.append(self.weather_high)
-        self.weather_group.append(self.weather_low_label)
         self.weather_group.append(self.weather_low)
         self.main_group.append(self.weather_group)
 
-        # Panel 2: 3/7-day forecast (y=MATRIX_HEIGHT*2 initially)
+        # Panel 2: 3-day forecast (y=MATRIX_HEIGHT*2 initially)
+        # Layout per row: day x=2 | [x=14-21: future 8×8 icon] | H:xx x=24 | L:xx x=40
         self.forecast_group = displayio.Group()
         self.forecast_group.y = MATRIX_HEIGHT * 2
 
         self._forecast_rows = []
         for y in [9, 18, 27]:
-            name = label.Label(font, text="", color=WHITE,    x=2,  y=y)
-            high = label.Label(font, text="", color=RED,      x=20, y=y)
-            low  = label.Label(font, text="", color=MTA_BLUE, x=32, y=y)
-            cond = label.Label(font, text="", color=WHITE,    x=44, y=y)
+            name = label.Label(font, text="",    color=WHITE,    x=2,  y=y)
+            high = label.Label(font, text="H:--", color=RED,     x=24, y=y)
+            low  = label.Label(font, text="L:--", color=MTA_BLUE, x=40, y=y)
             self.forecast_group.append(name)
             self.forecast_group.append(high)
             self.forecast_group.append(low)
-            self.forecast_group.append(cond)
-            self._forecast_rows.append((name, high, low, cond))
+            self._forecast_rows.append((name, high, low))
         self.main_group.append(self.forecast_group)
 
         # Panel 3: Last.FM — left 32px: artist/album/track; right 32px: album art
@@ -356,21 +380,21 @@ class TrainDisplay:
         """Update current weather panel from /api/weather?mode=current response."""
         if not data:
             return
-        self.weather_condition.text = data.get('description', '')[:14].upper()
-        self.weather_temp.text      = f"{data.get('temp', '--')}F"
-        self.weather_high.text      = str(data.get('high', '--'))
-        self.weather_low.text       = str(data.get('low', '--'))
+        self.weather_temp.text = f"{data.get('temp', '--')}F"
+        self.weather_high.text = f"H:{data.get('high', '--')}"
+        self.weather_low.text  = f"L:{data.get('low', '--')}"
+        if self._weather_icon is not None:
+            self._weather_icon[0] = _icon_index(data.get('icon', ''))
 
     def update_forecast(self, data):
-        """Update forecast panel from /api/weather?mode=3-day|7-day response."""
+        """Update 3-day forecast panel from /api/weather?mode=3-day response."""
         forecast = (data or {}).get('forecast', [])
-        if len(forecast) < 3:
+        if not forecast:
             return
-        for (name_lbl, high_lbl, low_lbl, cond_lbl), entry in zip(self._forecast_rows, forecast[:3]):
+        for (name_lbl, high_lbl, low_lbl), entry in zip(self._forecast_rows, forecast[:3]):
             name_lbl.text = entry.get('date', '')[:3]
-            high_lbl.text = f"H{entry.get('high', '--')}"
-            low_lbl.text  = f"L{entry.get('low', '--')}"
-            cond_lbl.text = entry.get('description', '')[:8]
+            high_lbl.text = f"H:{entry.get('high', '--')}"
+            low_lbl.text  = f"L:{entry.get('low', '--')}"
 
     def update_lastfm(self, data, show_art=True):
         """Update Last.FM panel (artist / album / track) and reset marquee scroll.

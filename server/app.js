@@ -352,8 +352,9 @@ app.patch('/api/device/:mac/config', async (req, res) => {
 // ─── Widget data routes ───────────────────────────────────────────────────────
 
 /**
- * GET /api/weather?zip=10001&mode=current|3-day|7-day[&key=xxx]
+ * GET /api/weather?zip=10001&mode=current|3-day[&key=xxx]
  * Proxies OpenWeather API. Uses OPENWEATHER_API_KEY env var, or ?key= param.
+ * Note: 7-day mode is deprecated — treated as 3-day for backward compatibility.
  */
 app.get('/api/weather', async (req, res) => {
   const { zip, mode = 'current', key } = req.query;
@@ -381,9 +382,8 @@ app.get('/api/weather', async (req, res) => {
       });
     }
 
-    // 3-day or 7-day forecast (OpenWeather returns 3-hour slots)
-    const days = mode === '7-day' ? 7 : 3;
-    const url  = `https://api.openweathermap.org/data/2.5/forecast?zip=${encodeURIComponent(zip)},us&appid=${apiKey}&units=imperial&cnt=${days * 8}`;
+    // 3-day forecast (7-day deprecated, treated as 3-day)
+    const url = `https://api.openweathermap.org/data/2.5/forecast?zip=${encodeURIComponent(zip)},us&appid=${apiKey}&units=imperial&cnt=24`;
     const r = await fetch(url);
     if (!r.ok) return res.status(r.status).json({ error: `OpenWeather error ${r.status}` });
     const d = await r.json();
@@ -393,22 +393,21 @@ app.get('/api/weather', async (req, res) => {
     for (const slot of d.list) {
       const day = new Date(slot.dt * 1000).toLocaleDateString('en-US', { weekday: 'short' });
       if (!byDay[day]) {
-        byDay[day] = { high: slot.main.temp_max, low: slot.main.temp_min, description: slot.weather[0]?.description || '', icon: slot.weather[0]?.icon || '' };
+        byDay[day] = { high: slot.main.temp_max, low: slot.main.temp_min, icon: slot.weather[0]?.icon || '' };
       } else {
         byDay[day].high = Math.max(byDay[day].high, slot.main.temp_max);
         byDay[day].low  = Math.min(byDay[day].low,  slot.main.temp_min);
       }
     }
 
-    const forecast = Object.entries(byDay).slice(0, days).map(([date, v]) => ({
+    const forecast = Object.entries(byDay).slice(0, 3).map(([date, v]) => ({
       date,
-      high:        Math.round(v.high),
-      low:         Math.round(v.low),
-      description: v.description,
-      icon:        v.icon,
+      high: Math.round(v.high),
+      low:  Math.round(v.low),
+      icon: v.icon,
     }));
 
-    return res.json({ mode, city: d.city.name, forecast });
+    return res.json({ mode: '3-day', city: d.city.name, forecast });
 
   } catch (err) {
     console.error('[WEATHER] Error:', err.message);

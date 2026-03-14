@@ -92,7 +92,7 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 | Widget | Config Fields | Data Source | Status |
 |---|---|---|---|
 | NYC MTA | Line, Station | MTA GTFS-RT | ✅ Live |
-| Weather | Zip code, Mode (current / 3-day / 7-day) | OpenWeather API | ✅ Live |
+| Weather | Zip code, Mode (current / 3-day) | OpenWeather API | ✅ Live |
 | Last.FM | Username, Mode (now playing / recent) | Last.FM API | ✅ Live |
 | SEPTA | Route, Stop ID | SEPTA GTFS-RT | ✅ Live |
 | MLB | Team, Mode (schedule / live score) | TBD | 🔲 Stub only |
@@ -102,7 +102,7 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 | Endpoint | Description |
 |---|---|
 | `GET /api/next/:stationId` | Next MTA trains for a parent stop ID |
-| `GET /api/weather?zip=&mode=current\|3-day\|7-day[&key=]` | OpenWeather proxy |
+| `GET /api/weather?zip=&mode=current\|3-day[&key=]` | OpenWeather proxy (7-day deprecated → treated as 3-day) |
 | `GET /api/lastfm?username=&mode=nowplaying\|recent[&key=]` | Last.FM proxy — includes `art_url` in response |
 | `GET /api/lastfm/art?url=` | Fetch, resize to 32×32, return raw RGB565 (2048 bytes); G/B swapped for panel hardware |
 | `GET /api/septa?route=&stop_id=[&results=2]` | Real-time bus arrivals via SEPTA GTFS-RT TripUpdates (no API key) |
@@ -117,8 +117,8 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 | Index | View name | Content |
 |---|---|---|
 | 0 | `subway` | Station name (top, orange) + North + South next trains |
-| 1 | `weather` | Current temp, condition, H/L |
-| 2 | `forecast` | 3-row day/high/low/condition |
+| 1 | `weather` | 16×16 weather icon (left) + temp (orange) + H/L |
+| 2 | `forecast` | 3-row day / H:xx / L:xx — x=14-21 reserved for future 8×8 icons |
 | 3 | `lastfm` | Artist (orange) / Album (gray) / Track (white) — left 32px; right 32px reserved for album art |
 | 4 | `septa` | SEPTA logo (left 22px) + route header + next 2 arrival times |
 
@@ -206,7 +206,6 @@ Max 8 chars. All lines:
 ### Known Issues / Backlog
 - **Weather panel — icon**: Current weather should show a weather icon alongside temp/condition
 - **Weather panel — location**: Show city/state/zip on the current weather screen
-- **7-day forecast**: Only 3 days display; not enough real estate for 7 days — needs either a condensed layout (heavily abbreviated) or a design decision to cap at 3-day
 - **G train dest label**: `'Ct Sq'` should be `'Court Sq'` — dest field can hold ~10 chars, no need to abbreviate
 - **Express train route letters**: `7X`, `6X`, etc. display as two characters in the circle — strip the `X` suffix so only the number shows (express vs local isn't meaningful on the sign)
 
