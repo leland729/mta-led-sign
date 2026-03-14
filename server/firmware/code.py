@@ -59,6 +59,28 @@ LINE_COLORS = {
     'S': 0x808381,                                  # Dark gray (shuttle)
 }
 
+# ── SEPTA logo — 11×16 px, RGB565, G/B channels swapped for panel hardware ────
+# 3 colors: blue=0x0568 (#0044AE), red=0xE007 (#E63900), white=0xFFFF, off=0x0000
+# Built into a displayio.Bitmap in RAM at boot — no BMP file needed on CIRCUITPY.
+SEPTA_LOGO = (
+    0x0000, 0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007, 0x0000,
+    0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007, 0xE007, 0xE007,
+    0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007, 0xE007, 0xE007,
+    0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007, 0xE007, 0xE007, 0xE007, 0xE007,
+    0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007, 0xE007, 0xE007, 0xE007, 0xE007,
+    0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007, 0xE007,
+    0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007,
+    0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xE007, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007,
+    0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xE007, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007,
+    0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007,
+    0x0568, 0x0568, 0x0568, 0x0568, 0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007,
+    0x0568, 0x0568, 0x0568, 0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007,
+    0x0568, 0x0568, 0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007,
+    0x0568, 0x0568, 0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007,
+    0x0568, 0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007, 0xE007,
+    0x0000, 0x0568, 0x0568, 0x0568, 0xFFFF, 0xFFFF, 0xFFFF, 0xE007, 0xE007, 0xE007, 0x0000,
+)
+
 # ── WiFi credentials (written to device by AP setup mode) ─────────────────────
 from secrets import secrets  # needs: ssid, password only
 
@@ -214,13 +236,9 @@ class TrainDisplay:
         self.septa_group = displayio.Group()
         self.septa_group.y = MATRIX_HEIGHT * 4
 
-        try:
-            _bmp = displayio.OnDiskBitmap("/septa_11x16.bmp")
-            self.septa_group.append(
-                displayio.TileGrid(_bmp, pixel_shader=_bmp.pixel_shader, x=0, y=8)
-            )
-        except Exception:
-            pass  # BMP not on device; logo area stays blank
+        _logo = self._build_septa_logo()
+        if _logo:
+            self.septa_group.append(_logo)
 
         self.septa_header    = label.Label(font, text="Rt --", color=ORANGE, x=23, y=6)
         self.septa_next_lbl  = label.Label(font, text="N:",    color=WHITE,  x=23, y=16)
@@ -261,6 +279,21 @@ class TrainDisplay:
         self.splash_group.append(self.splash_letter)
         self.splash_group.append(self.splash_line1)
         self.splash_group.append(self.splash_line2)
+
+    def _build_septa_logo(self):
+        """Build the 11×16 SEPTA logo TileGrid in RAM from hardcoded RGB565 data.
+        No BMP file needed on CIRCUITPY — logo is embedded directly in firmware.
+        """
+        try:
+            bm = displayio.Bitmap(11, 16, 65536)
+            for i, val in enumerate(SEPTA_LOGO):
+                bm[i % 11, i // 11] = val
+            converter = displayio.ColorConverter(
+                input_colorspace=displayio.Colorspace.RGB565)
+            return displayio.TileGrid(bm, pixel_shader=converter, x=0, y=8)
+        except Exception as e:
+            print(f"SEPTA logo: {e}")
+            return None
 
     # ── Splash ────────────────────────────────────────────────────────────────
 

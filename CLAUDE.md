@@ -127,9 +127,8 @@ Each device has up to **5 pages** that cycle on a global timer (`scroll_speed`).
 - Stop IDs are already directional (each pole is a unique stop ID — no N/S suffix needed)
 - Config fields: `route` (e.g., `"48"`) and `stop_id` (e.g., `"5372"`)
 - Layout: pixel-art SEPTA logo in left 22px column; route + next 2 ETAs in right 42px
-- Logo loaded from `/septa_11x16.bmp` on the CIRCUITPY drive via `displayio.OnDiskBitmap`; positioned x=0, y=8 (centered vertically in 32px column)
-- BMP must have G/B channels pre-swapped for the panel hardware — use `images/septa_11x16_panel.bmp` (auto-generated, correct colors) not `septa_11x16.bmp` (original)
-- If the BMP is missing on the device, the logo area is silently blank (try/except)
+- Logo embedded directly in firmware as a hardcoded RGB565 tuple (`SEPTA_LOGO` in `code.py`); built into a `displayio.Bitmap(11, 16, 65536)` in RAM at boot via `_build_septa_logo()` — no BMP file needed on CIRCUITPY
+- G/B channels are pre-swapped in the tuple values to match panel hardware wiring (same convention as `LINE_COLORS`)
 - Long objects from `gtfs-realtime-bindings` handled: `typeof time === 'object' ? time.low : time`
 
 ### Subway Panel Layout (32px tall, 64px wide)
@@ -205,7 +204,6 @@ Max 8 chars. All lines:
 - **MLB / NFL**: Choose data source, wire up endpoints
 
 ### Known Issues / Backlog
-- **SEPTA logo colors**: BMP loaded via `OnDiskBitmap` uses raw file colors; panel hardware swaps G/B on output. `septa_11x16_panel.bmp` (G/B pre-swapped) must be copied to CIRCUITPY as `septa_11x16.bmp` — easy to get wrong. Consider embedding the logo in firmware (Bitmap + palette) to eliminate the extra file dependency.
 - **Weather panel — icon**: Current weather should show a weather icon alongside temp/condition
 - **Weather panel — location**: Show city/state/zip on the current weather screen
 - **7-day forecast**: Only 3 days display; not enough real estate for 7 days — needs either a condensed layout (heavily abbreviated) or a design decision to cap at 3-day
