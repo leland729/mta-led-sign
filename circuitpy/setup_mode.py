@@ -89,6 +89,35 @@ Connection: close\r
 </html>""".format(url=url)
 
 
+def _html_error(msg=''):
+    return """\
+HTTP/1.1 500 Internal Server Error\r
+Content-Type: text/html\r
+Connection: close\r
+\r
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Error</title>
+  <style>
+    body {{ font-family: sans-serif; max-width: 400px; margin: 40px auto; padding: 0 16px; }}
+    .err {{ background: #fee; border: 1px solid #f88; border-radius: 4px; padding: 12px; font-family: monospace; }}
+    .btn {{ display:inline-block; margin-top:24px; padding:12px 20px;
+            background:#0066cc; color:white; font-size:16px;
+            border-radius:4px; text-decoration:none; }}
+  </style>
+</head>
+<body>
+  <h2>&#x274C; Save Failed</h2>
+  <p>Could not write credentials to the device. Error:</p>
+  <div class="err">{msg}</div>
+  <p>Make sure the device booted normally (do not hold the button on power-up) so it has filesystem write access.</p>
+  <a class="btn" href="/">Try Again &rarr;</a>
+</body>
+</html>""".format(msg=msg)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -250,7 +279,6 @@ def run(display=None):
     if display is not None:
         try:
             display.show_splash('AP Mode', AP_SSID)
-            display.show_error(False)
         except Exception:
             pass
 
@@ -303,18 +331,27 @@ def run(display=None):
                         if display is not None:
                             try: display.show_splash('Saving', '...')
                             except Exception: pass
-                        _send_all(conn, _html_success(device_mac))
-                        conn.close()
+                        write_error = None
                         try:
                             _write_secrets(ssid, password)
                         except Exception as we:
+                            write_error = str(we)
                             print('Write error:', we)
+                        if write_error:
                             if display is not None:
                                 try: display.show_splash('AP Error', 'Write err')
                                 except Exception: pass
-                        print('Rebooting...')
-                        time.sleep(2)
-                        microcontroller.reset()
+                            _send_all(conn, _html_error(write_error))
+                            conn.close()
+                        else:
+                            if display is not None:
+                                try: display.show_splash('Saved!', 'Restarting')
+                                except Exception: pass
+                            _send_all(conn, _html_success(device_mac))
+                            conn.close()
+                            print('Rebooting...')
+                            time.sleep(2)
+                            microcontroller.reset()
                     else:
                         if display is not None:
                             try: display.show_splash('AP Mode', 'No SSID')
