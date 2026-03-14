@@ -639,7 +639,12 @@
 </div>`;
   }
 
+  // ── Device filter (from ?device=mac deep link) ───────────────────────────────
+  const _filterMac = new URLSearchParams(location.search).get('device') || '';
+
   // ── Load devices ─────────────────────────────────────────────────────────────
+
+  let _waitInterval = null;
 
   async function loadDevices() {
     try {
@@ -651,9 +656,30 @@
       if (!devRes.ok) throw new Error(`/api/devices returned ${devRes.status}`);
 
       stations = await stRes.json();
-      const devices = await devRes.json();
+      let devices = await devRes.json();
 
       const container = document.getElementById('devices');
+
+      // If a specific device MAC was passed in the URL, filter to just that one
+      if (_filterMac) {
+        devices = devices.filter(d => d.mac === _filterMac);
+        if (devices.length === 0) {
+          // Device hasn't registered yet — show waiting state and poll
+          container.innerHTML = `
+            <div class="state-box">
+              <div class="icon">⏳</div>
+              <p>Waiting for your device to connect…<br>
+              <code>${esc(_filterMac)}</code><br><br>
+              This page will update automatically.</p>
+            </div>`;
+          if (!_waitInterval) {
+            _waitInterval = setInterval(loadDevices, 4000);
+          }
+          return;
+        }
+        // Device found — stop polling
+        if (_waitInterval) { clearInterval(_waitInterval); _waitInterval = null; }
+      }
 
       if (!Array.isArray(devices) || devices.length === 0) {
         container.innerHTML = `

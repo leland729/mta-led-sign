@@ -57,7 +57,11 @@ Connection: close\r
 </body>
 </html>"""
 
-_HTML_SUCCESS = """\
+def _html_success(mac=''):
+    url = 'https://subway-api-829904256043.us-east1.run.app'
+    if mac:
+        url += '?device=' + mac
+    return """\
 HTTP/1.1 200 OK\r
 Content-Type: text/html\r
 Connection: close\r
@@ -68,21 +72,21 @@ Connection: close\r
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Saved</title>
   <style>
-    body { font-family: sans-serif; max-width: 400px; margin: 40px auto; padding: 0 16px; }
-    .btn {
+    body {{ font-family: sans-serif; max-width: 400px; margin: 40px auto; padding: 0 16px; }}
+    .btn {{
       display: inline-block; margin-top: 24px; padding: 12px 20px;
       background: #0066cc; color: white; font-size: 16px;
       border-radius: 4px; text-decoration: none;
-    }
+    }}
   </style>
 </head>
 <body>
   <h2>&#x2705; Credentials Saved</h2>
   <p>Your Subway Sign is restarting and will connect to your network in a moment.</p>
   <p>Once it's online, visit the Admin UI to name your device and configure its display.</p>
-  <a class="btn" href="https://subway-api-829904256043.us-east1.run.app">Open Admin UI &rarr;</a>
+  <a class="btn" href="{url}">Open Admin UI &rarr;</a>
 </body>
-</html>"""
+</html>""".format(url=url)
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +238,14 @@ def run(display=None):
     print('Navigate to http://' + AP_IP)
     print('=' * 40)
 
+    # Read device MAC for the Admin UI deep link
+    try:
+        _mac_bytes = wifi.radio.mac_address
+        device_mac = ':'.join('{:02x}'.format(b) for b in _mac_bytes)
+    except Exception:
+        device_mac = ''
+    print('Device MAC:', device_mac)
+
     # Update display if available
     if display is not None:
         try:
@@ -291,7 +303,7 @@ def run(display=None):
                         if display is not None:
                             try: display.show_splash('Saving', '...')
                             except Exception: pass
-                        _send_all(conn, _HTML_SUCCESS)
+                        _send_all(conn, _html_success(device_mac))
                         conn.close()
                         try:
                             _write_secrets(ssid, password)
