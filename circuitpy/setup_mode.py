@@ -67,12 +67,20 @@ Connection: close\r
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Saved</title>
-  <style>body { font-family: sans-serif; max-width: 400px; margin: 40px auto; padding: 0 16px; }</style>
+  <style>
+    body { font-family: sans-serif; max-width: 400px; margin: 40px auto; padding: 0 16px; }
+    .btn {
+      display: inline-block; margin-top: 24px; padding: 12px 20px;
+      background: #0066cc; color: white; font-size: 16px;
+      border-radius: 4px; text-decoration: none;
+    }
+  </style>
 </head>
 <body>
   <h2>&#x2705; Credentials Saved</h2>
-  <p>Your Subway Sign is restarting and will attempt to connect to your network.</p>
-  <p>You can close this page.</p>
+  <p>Your Subway Sign is restarting and will connect to your network in a moment.</p>
+  <p>Once it's online, visit the Admin UI to name your device and configure its display.</p>
+  <a class="btn" href="https://subway-api-829904256043.us-east1.run.app">Open Admin UI &rarr;</a>
 </body>
 </html>"""
 
