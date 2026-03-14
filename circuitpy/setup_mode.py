@@ -57,10 +57,8 @@ Connection: close\r
 </body>
 </html>"""
 
-def _html_success(mac=''):
-    url = 'https://subway-api-829904256043.us-east1.run.app'
-    if mac:
-        url += '?device=' + mac
+def _html_success():
+    admin_url = 'https://subway-api-829904256043.us-east1.run.app'
     return """\
 HTTP/1.1 200 OK\r
 Content-Type: text/html\r
@@ -72,21 +70,30 @@ Connection: close\r
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Saved</title>
   <style>
-    body {{ font-family: sans-serif; max-width: 400px; margin: 40px auto; padding: 0 16px; }}
-    .btn {{
-      display: inline-block; margin-top: 24px; padding: 12px 20px;
-      background: #0066cc; color: white; font-size: 16px;
-      border-radius: 4px; text-decoration: none;
-    }}
+    body {{ font-family: sans-serif; max-width: 420px; margin: 40px auto; padding: 0 20px; color: #111; }}
+    h2 {{ margin-bottom: 12px; }}
+    .steps {{ margin: 16px 0 24px; padding-left: 20px; line-height: 1.8; }}
+    .code-hint {{ background: #f4f4f4; border-left: 4px solid #0066cc;
+                  padding: 10px 14px; border-radius: 4px; margin: 16px 0; font-size: 0.95rem; }}
+    .btn {{ display: inline-block; padding: 12px 20px; background: #0066cc;
+            color: white; font-size: 16px; border-radius: 4px; text-decoration: none; }}
   </style>
 </head>
 <body>
   <h2>&#x2705; Credentials Saved</h2>
-  <p>Your Subway Sign is restarting and will connect to your network in a moment.</p>
-  <p>Once it's online, visit the Admin UI to name your device and configure its display.</p>
-  <a class="btn" href="{url}">Open Admin UI &rarr;</a>
+  <p>Your Subway Sign is restarting and connecting to your WiFi network.</p>
+  <div class="code-hint">
+    &#128161; In about 30 seconds your sign will display a short <strong>device code</strong>
+    (e.g. <strong>00D2</strong>). You&#39;ll need it in the next step.
+  </div>
+  <ol class="steps">
+    <li>Wait for the sign to show <strong>Setup Mode / Code: XXXX</strong></li>
+    <li>Open the Admin UI (link below)</li>
+    <li>Enter your 4-character device code to find and configure your sign</li>
+  </ol>
+  <a class="btn" href="{admin_url}">Open Admin UI &rarr;</a>
 </body>
-</html>""".format(url=url)
+</html>""".format(admin_url=admin_url)
 
 
 def _html_error(msg=''):
@@ -350,7 +357,7 @@ def run(display=None):
                             if display is not None:
                                 try: display.show_splash('Saved!', 'Restarting')
                                 except Exception: pass
-                            _send_all(conn, _html_success(device_mac))
+                            _send_all(conn, _html_success())
                             conn.close()
                             print('Rebooting...')
                             time.sleep(2)

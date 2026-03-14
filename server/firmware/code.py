@@ -812,8 +812,27 @@ if connected:
         # Build carousel from pages array; supported types: mta, weather, lastfm, septa
         raw_pages = config.get('pages', [])
         CAROUSEL  = [p for p in raw_pages if p.get('type') in ('mta', 'weather', 'lastfm', 'septa')]
+
         if not CAROUSEL:
-            CAROUSEL = [{'type': 'mta', 'station_id': CFG['station_id']}]
+            # No pages configured yet — show device code and wait for Admin UI setup
+            import microcontroller as _mc
+            mac_code = network.mac.replace(':', '')[-4:].upper() if network.mac else '????'
+            display.show_splash('Setup Mode', 'Code: ' + mac_code)
+            print(f'No pages configured. Device code: {mac_code}')
+            while True:
+                time.sleep(30)
+                try:
+                    cfg2 = network.register_and_fetch_config()
+                    if cfg2:
+                        p2 = [p for p in cfg2.get('pages', [])
+                              if p.get('type') in ('mta', 'weather', 'lastfm', 'septa')]
+                        if p2:
+                            display.show_splash('Ready!', 'Reloading...')
+                            time.sleep(1)
+                            _mc.reset()
+                except Exception as _e:
+                    print(f'Setup poll: {_e}')
+            # Never reaches here — exits via _mc.reset()
 
         print(f"Firestore config applied — {len(CAROUSEL)} page(s) in carousel")
 

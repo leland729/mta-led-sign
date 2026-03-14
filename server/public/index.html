@@ -226,6 +226,26 @@
     .state-box p { font-size: 0.85rem; line-height: 1.6; }
     .state-box code { font-size: 0.78rem; color: #555; }
 
+    /* ── Device code finder ─────────────────────────────────── */
+    .code-finder-box {
+      background: #181818; border: 1px solid #2a2a2a; border-radius: 10px;
+      padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .code-finder-label { font-size: 0.82rem; color: #aaa; }
+    .code-finder-row { display: flex; gap: 8px; align-items: center; }
+    .code-input {
+      width: 90px; padding: 8px 10px; background: #111; border: 1px solid #333;
+      border-radius: 6px; color: #fff; font-size: 1rem; font-family: 'SF Mono','Fira Code',monospace;
+      letter-spacing: 2px; text-transform: uppercase; text-align: center;
+    }
+    .code-input:focus { outline: none; border-color: #6cbe45; }
+    .btn-find {
+      padding: 8px 16px; background: #6cbe45; color: #000; font-size: 0.85rem;
+      font-weight: 600; border: none; border-radius: 6px; cursor: pointer;
+    }
+    .btn-find:hover { background: #7fd455; }
+    .code-finder-error { font-size: 0.78rem; color: #e05050; min-height: 1em; }
+
     /* ── Page notes ──────────────────────────────────────────── */
     .page-notes {
       max-width: 700px; margin: 28px auto 0;
@@ -252,6 +272,21 @@
     <button class="btn-ghost" onclick="loadDevices()">↻ Refresh</button>
   </div>
 </header>
+
+<!-- ── Device code finder (hidden when ?device= is already set) ────────── -->
+<div id="code-finder" style="display:none; max-width:700px; margin:0 auto 20px;">
+  <div class="code-finder-box">
+    <span class="code-finder-label">🔍 New device? Enter the code shown on your sign:</span>
+    <div class="code-finder-row">
+      <input type="text" id="device-code-input" class="code-input"
+             placeholder="e.g. 00D2" maxlength="6" autocomplete="off"
+             spellcheck="false" autocapitalize="characters"
+             onkeydown="if(event.key==='Enter') findByCode()">
+      <button class="btn-find" onclick="findByCode()">Find Device →</button>
+    </div>
+    <span id="code-finder-error" class="code-finder-error"></span>
+  </div>
+</div>
 
 <div id="devices">
   <div class="state-box"><div class="icon">⏳</div><p>Loading devices…</p></div>
@@ -641,6 +676,37 @@
 
   // ── Device filter (from ?device=mac deep link) ───────────────────────────────
   const _filterMac = new URLSearchParams(location.search).get('device') || '';
+
+  // Show the code-finder only when there's no ?device= filter (i.e. not a deep link)
+  if (!_filterMac) {
+    document.getElementById('code-finder').style.display = 'block';
+  }
+
+  // ── Find device by 4-char code ────────────────────────────────────────────────
+  async function findByCode() {
+    const input = document.getElementById('device-code-input');
+    const errEl = document.getElementById('code-finder-error');
+    const code  = input.value.trim().toLowerCase().replace(/:/g, '');
+    errEl.textContent = '';
+
+    if (code.length < 4) {
+      errEl.textContent = 'Enter at least 4 characters.';
+      return;
+    }
+
+    try {
+      const res     = await fetch('/api/devices');
+      const devices = await res.json();
+      const match   = devices.find(d => d.mac.replace(/:/g, '').toLowerCase().endsWith(code));
+      if (match) {
+        location.href = '?device=' + encodeURIComponent(match.mac);
+      } else {
+        errEl.textContent = 'Device not found — make sure it\'s connected and showing "Setup Mode".';
+      }
+    } catch (e) {
+      errEl.textContent = 'Error looking up devices: ' + e.message;
+    }
+  }
 
   // ── Load devices ─────────────────────────────────────────────────────────────
 
