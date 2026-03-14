@@ -229,7 +229,7 @@ def run(display=None):
     # Update display if available
     if display is not None:
         try:
-            display.show_status('Setup')
+            display.show_splash('AP Mode', AP_SSID)
             display.show_error(False)
         except Exception:
             pass
@@ -281,7 +281,7 @@ def run(display=None):
                     password = params.get('password', '')
                     if ssid:
                         if display is not None:
-                            try: display.show_status('Saving')
+                            try: display.show_splash('Saving', '...')
                             except Exception: pass
                         _send_all(conn, _HTML_SUCCESS)
                         conn.close()
@@ -290,19 +290,19 @@ def run(display=None):
                         except Exception as we:
                             print('Write error:', we)
                             if display is not None:
-                                try: display.show_status('WrErr')
+                                try: display.show_splash('AP Error', 'Write err')
                                 except Exception: pass
                         print('Rebooting...')
                         time.sleep(2)
                         microcontroller.reset()
                     else:
                         if display is not None:
-                            try: display.show_status('NoSSID')
+                            try: display.show_splash('AP Mode', 'No SSID')
                             except Exception: pass
                         _send_all(conn, _HTML_FORM)
                 else:
                     if display is not None:
-                        try: display.show_status('NoBdy')
+                        try: display.show_splash('AP Mode', 'Bad req')
                         except Exception: pass
                     _send_all(conn, _HTML_FORM)
 
