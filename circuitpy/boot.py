@@ -8,16 +8,18 @@ Storage remount strategy:
   - BUTTON_UP held on power-up: skip remount, USB host keeps write access.
     Use this during development to copy files via USB.
 """
-import board
-import digitalio
 import storage
 
-btn = digitalio.DigitalInOut(board.BUTTON_UP)
-btn.direction = digitalio.Direction.INPUT
-btn.pull = digitalio.Pull.UP
+try:
+    import board
+    import digitalio
+    btn = digitalio.DigitalInOut(board.BUTTON_UP)
+    btn.direction = digitalio.Direction.INPUT
+    btn.pull = digitalio.Pull.UP
+    button_held = not btn.value  # active low — True if held
+    btn.deinit()
+except Exception:
+    button_held = False  # if button check fails, default to device write access
 
-if btn.value:  # not pressed (active low) — normal boot
+if not button_held:
     storage.remount("/", readonly=False)
-# else: button held → USB keeps write access
-
-btn.deinit()
