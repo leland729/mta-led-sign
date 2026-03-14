@@ -640,6 +640,12 @@ class NetworkManager:
             if self.mac is None:
                 self.mac = ':'.join(f'{b:02x}' for b in wifi.radio.mac_address)
                 print(f"MAC: {self.mac}")
+                # Persist STA MAC so AP mode can use it for the Admin UI deep link
+                try:
+                    with open('/mac.txt', 'w') as _f:
+                        _f.write(self.mac)
+                except Exception:
+                    pass
 
             self.connected   = True
             self.error_count = 0
@@ -782,14 +788,6 @@ CAROUSEL = [{'type': 'mta', 'station_id': CFG['station_id']}]
 print("\nStarting main program...")
 connected = False
 
-# Read STA MAC before any WiFi operations (radio is in station mode here)
-try:
-    import wifi as _wifi
-    _sta_mac = ':'.join(f'{b:02x}' for b in _wifi.radio.mac_address)
-    print(f"STA MAC: {_sta_mac}")
-except Exception:
-    _sta_mac = ''
-
 for attempt in range(3):
     display.show_splash("Connecting", f"WiFi {attempt + 1}/3")
     print(f"WiFi attempt {attempt + 1}/3")
@@ -834,7 +832,7 @@ else:
     # All WiFi retries failed — launch AP setup mode
     print("WiFi failed — entering AP setup mode")
     import setup_mode
-    setup_mode.run(display, sta_mac=_sta_mac)
+    setup_mode.run(display)
     # setup_mode.run() calls microcontroller.reset() — never reaches here
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
